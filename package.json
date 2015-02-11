@@ -1,0 +1,13 @@
+{
+  "name": "wsmud",
+  "version": "0.1.0",
+  "description": "A WebSocket-based MUD client.",
+  "scripts": {
+    "serve": "http-server"
+  },
+  "author": "Paul Goins <general@vultaire.net>",
+  "license": "MIT",
+  "dependencies": {
+    "http-server": "^0.7.4"
+  }
+}
