@@ -19,11 +19,10 @@
 
         var socket = client.connect("ws://localhost:50008/");
         socket.addEventListener('open', function (e) {
-            console.log('Web socket open');
+            console.log('Web socket opened successfully.');
         });
         socket.addEventListener('error', function (e) {
-            console.log('error: arguments:', arguments);
-            alert('Could not open web socket');
+            alert('Could not open web socket!');
         });
     });
 })();
