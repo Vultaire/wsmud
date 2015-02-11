@@ -1,0 +1,22 @@
+{
+  "name": "wsmud",
+  "main": "index.js",
+  "version": "0.1.0",
+  "authors": [
+    "Paul Goins <general@vultaire.net>"
+  ],
+  "description": "A WebSockets-based MUD client.",
+  "license": "MIT",
+  "homepage": "http://www.vultaire.net/",
+  "private": true,
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ],
+  "devDependencies": {
+    "qunit": "~1.17.1"
+  }
+}
