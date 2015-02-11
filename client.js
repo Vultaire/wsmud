@@ -71,7 +71,6 @@ var Client = function () {
             }
         }
         var output = String.fromCharCode.apply(null, charBuffer);
-        console.log('Text:');
         console.log(output);
         charBuffer = [];
     };
@@ -96,7 +95,8 @@ var Client = function () {
             return this.socket;
         },
         onUserInput: function (userInput) {
-            console.log('Received user input:', userInput);
+            // TO DO: Echo output
+            // (Except for password...)
             this.socket.send(userInput + '\n');
         },
     };

@@ -11,9 +11,8 @@
                 shouldSend = (e.keyIdentifier == 'Enter');
             }
             if (shouldSend) {
-                var val = inputElem.value;
-                inputElem.value = '';
-                client.onUserInput(val);
+                inputElem.setSelectionRange(0, inputElem.value.length);
+                client.onUserInput(inputElem.value);
             }
         });
 
