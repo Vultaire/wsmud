@@ -32,7 +32,7 @@ var Client = function () {
         return commandMap[command];
     };
 
-    var handleArrayBuffer = function (buffer) {
+    var handleMessage = function (buffer) {
         var uint8 = new Uint8Array(buffer, 0, buffer.length);
         for (var i=0; i<uint8.length; i++) {
             var byte = uint8[i];
@@ -76,17 +76,28 @@ var Client = function () {
         charBuffer = [];
     };
 
+    var onMessage = function (event) {
+        fr = new FileReader();
+        fr.addEventListener('loadend', function () {
+            return handleMessage(fr.result);
+        });
+        fr.readAsArrayBuffer(event.data);
+    };
+
     return {
-        initialize: function () {
-            // Nothing to do... yet.
+        socket: null,
+        outputElem: null,
+        initialize: function (outputElem) {
+            this.outputElem = outputElem;
         },
-        onMessage: function (event) {
-            console.log('Received message data:', event.data);
-            fr = new FileReader();
-            fr.addEventListener('loadend', function () {
-                return handleArrayBuffer(fr.result);
-            });
-            fr.readAsArrayBuffer(event.data);
+        connect: function (addr) {
+            this.socket = new WebSocket(addr, ["telnet"]);
+            this.socket.addEventListener('message', onMessage);
+            return this.socket;
+        },
+        onUserInput: function (userInput) {
+            console.log('Received user input:', userInput);
+            this.socket.send(userInput + '\n');
         },
     };
 }();

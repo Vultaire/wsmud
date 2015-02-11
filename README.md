@@ -20,6 +20,6 @@ To use with Aardwolf:
 
 * Navigate to http://localhost:8080/.
 
-At the time of writing, there is no way to send output to the MUD, and
-the MUD's output comes back through the console.  This will likely
+At the time of writing, input is done via the input box on the page,
+and the MUD's output comes back through the console.  This will likely
 change in the near future.
