@@ -138,11 +138,15 @@ var Client = function () {
                     line = line.slice(0, line.length-2);
                 }
                 client.appendLine(line);
-
-                // Auto-scroll
-
-                // TO DO: determine when to continue a previous line...
             });
+            // If we ended on a new line, our final line in the
+            // line list should be empty.  If this is *not* true,
+            // then we should continue from the current line on
+            // the next call.
+            client.continueLine = lines[lines.length-1] !== '';
+            console.log('Continue line:', client.continueLine);
+            // Something seems bugged... test via "clan -h".  Lots of
+            // output == weirdness.  Haven't yet traced.
         },
         createNewLine: function () {
             var lineElem = document.createElement('div');
