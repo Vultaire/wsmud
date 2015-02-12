@@ -138,9 +138,9 @@ var Client = function () {
         },
         appendLine: function (input) {
             this.currentLine.innerHTML += _.template('<%- input %>')({input: input});
-            this.detectPassword(input);
+            this.detectPasswordPrompt(input);
         },
-        detectPassword: function (input) {
+        detectPasswordPrompt: function (input) {
             this.passwordPrompt = (input.toLowerCase().indexOf('password') === 0);
         },
     };
