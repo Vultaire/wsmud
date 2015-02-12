@@ -40,8 +40,16 @@ var Client = function () {
         currentLine: null,
         continueLine: false,  // Probably not used so often with MUDs...
         passwordPrompt: false,
+        shouldAutoScroll: true,
         initialize: function (outputElem) {
             this.outputElem = outputElem;
+            var client = this;
+            this.outputElem.addEventListener('scroll', function () {
+                client.shouldAutoScroll = (
+                    client.outputElem.scrollTop ===
+                    client.outputElem.scrollHeight - client.outputElem.clientHeight
+                );
+            });
         },
         connect: function (addr) {
             this.socket = new WebSocket(addr, ["telnet"]);
@@ -132,17 +140,31 @@ var Client = function () {
         createNewLine: function () {
             var lineElem = document.createElement('div');
             lineElem.classList.add('output-line');
+            var shouldScroll = this.shouldAutoScroll;
             this.outputElem.appendChild(lineElem);
             this.currentLine = lineElem;
+            if (shouldScroll) {
+                this.autoScroll();
+            }
             return lineElem;
         },
         appendLine: function (input) {
+            var shouldScroll = this.shouldAutoScroll;
             this.currentLine.innerHTML += _.template('<%- input %>')({input: input});
             this.detectPasswordPrompt(input);
+            if (shouldScroll) {
+                this.autoScroll();
+            }
         },
         detectPasswordPrompt: function (input) {
             this.passwordPrompt = (input.toLowerCase().indexOf('password') === 0);
         },
+        autoScroll: function () {
+            // TO DO: Don't autoscroll if the user scrolls up from the
+            // bottom.
+            if (this.shouldAutoScroll) {
+                this.outputElem.scrollTop = this.outputElem.scrollHeight - this.outputElem.clientHeight;
+            }
+        },
     };
 }();
-
