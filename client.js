@@ -144,7 +144,8 @@ var Client = function () {
             this.outputElem.appendChild(lineElem);
             this.currentLine = lineElem;
             if (shouldScroll) {
-                this.autoScroll();
+                // Seems we need to release to the browser to allow redrawing/resizing.
+                setTimeout(this.autoScroll.bind(this), 0);
             }
             return lineElem;
         },
@@ -153,7 +154,7 @@ var Client = function () {
             this.currentLine.innerHTML += _.template('<%- input %>')({input: input});
             this.detectPasswordPrompt(input);
             if (shouldScroll) {
-                this.autoScroll();
+                setTimeout(this.autoScroll.bind(this), 0);
             }
         },
         detectPasswordPrompt: function (input) {
@@ -162,9 +163,8 @@ var Client = function () {
         autoScroll: function () {
             // TO DO: Don't autoscroll if the user scrolls up from the
             // bottom.
-            if (this.shouldAutoScroll) {
-                this.outputElem.scrollTop = this.outputElem.scrollHeight - this.outputElem.clientHeight;
-            }
+            var newScrollTop = this.outputElem.scrollHeight - this.outputElem.clientHeight;
+            this.outputElem.scrollTop = this.outputElem.scrollHeight - this.outputElem.clientHeight;
         },
     };
 }();
