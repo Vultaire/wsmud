@@ -39,6 +39,7 @@ var Client = function () {
         outputElem: null,
         currentLine: null,
         continueLine: false,  // Probably not used so often with MUDs...
+        passwordPrompt: false,
         initialize: function (outputElem) {
             this.outputElem = outputElem;
         },
@@ -50,12 +51,13 @@ var Client = function () {
         onUserInput: function (userInput) {
             this.socket.send(userInput + '\n');
 
-            // TO DO: Skip echoing of password via some sort of heuristic
-
-            // Dunno if we were continuing a previous line, but we
-            // aren't now.
-            this.continueLine = false;
-            this.createNewLine().innerHTML = _.template('<%- line %>')({line: userInput});
+            if (!this.passwordPrompt) {
+                // Dunno if we were continuing a previous line, but we
+                // aren't now.
+                this.continueLine = false;
+                this.createNewLine();
+                this.appendLine(userInput);
+            }
         },
         onMessage: function (event) {
             var fr = new FileReader();
@@ -120,7 +122,7 @@ var Client = function () {
                         return;
                     }
                 }
-                lineElem.innerHTML += _.template('<%- line %>')({line: line});
+                client.appendLine(line);
 
                 // Auto-scroll
 
@@ -133,6 +135,13 @@ var Client = function () {
             this.outputElem.appendChild(lineElem);
             this.currentLine = lineElem;
             return lineElem;
+        },
+        appendLine: function (input) {
+            this.currentLine.innerHTML += _.template('<%- input %>')({input: input});
+            this.detectPassword(input);
+        },
+        detectPassword: function (input) {
+            this.passwordPrompt = (input.toLowerCase().indexOf('password') === 0);
         },
     };
 }();
