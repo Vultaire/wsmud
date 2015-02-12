@@ -1,4 +1,6 @@
 var Client = function () {
+    'use strict';
+
     var currentCommand = [];
     var charBuffer = [];
 
@@ -36,7 +38,7 @@ var Client = function () {
         socket: null,
         outputElem: null,
         currentLine: null,
-        continueLine: false,
+        continueLine: false,  // Probably not used so often with MUDs...
         initialize: function (outputElem) {
             this.outputElem = outputElem;
         },
@@ -46,12 +48,17 @@ var Client = function () {
             return this.socket;
         },
         onUserInput: function (userInput) {
-            // TO DO: Echo output
-            // (Except for password...)
             this.socket.send(userInput + '\n');
+
+            // TO DO: Skip echoing of password via some sort of heuristic
+
+            // Dunno if we were continuing a previous line, but we
+            // aren't now.
+            this.continueLine = false;
+            this.createNewLine().innerHTML = _.template('<%- line %>')({line: userInput});
         },
         onMessage: function (event) {
-            fr = new FileReader();
+            var fr = new FileReader();
             var client = this;
             fr.addEventListener('loadend', function () {
                 return client.handleMessage(fr.result);
@@ -101,17 +108,12 @@ var Client = function () {
             this.pushOutput(output);
         },
         pushOutput: function (output) {
-            console.log(output.split('\n\r'));  // For debug and comparison
             var client = this;
             var lines = output.split('\n\r');
             lines.forEach(function (line) {
-                console.log([line, line.charCodeAt(0), line.charCodeAt(1), line.charCodeAt(2)]);
-                if (!client.continueLine) {
-                    lineElem = document.createElement('div');
-                    lineElem.classList.add('output-line');
-                    client.outputElem.appendChild(lineElem);
-                    client.currentLine = lineElem;
-
+                var lineElem = client.currentLine;
+                if (!lineElem || !client.continueLine) {
+                    lineElem = client.createNewLine();
                     if (line.trim().length === 0) {
                         // Workaround for empty lines
                         lineElem.innerHTML = '&nbsp;';
@@ -119,8 +121,18 @@ var Client = function () {
                     }
                 }
                 lineElem.innerHTML += _.template('<%- line %>')({line: line});
+
+                // Auto-scroll
+
                 // TO DO: determine when to continue a previous line...
             });
+        },
+        createNewLine: function () {
+            var lineElem = document.createElement('div');
+            lineElem.classList.add('output-line');
+            this.outputElem.appendChild(lineElem);
+            this.currentLine = lineElem;
+            return lineElem;
         },
     };
 }();
