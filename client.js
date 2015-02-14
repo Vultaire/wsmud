@@ -147,9 +147,6 @@ var Client = function () {
             // then we should continue from the current line on
             // the next call.
             client.continueLine = lines[lines.length-1] !== '';
-            console.log('Continue line:', client.continueLine);
-            // Something seems bugged... test via "clan -h".  Lots of
-            // output == weirdness.  Haven't yet traced.
         },
         createNewLine: function () {
             var lineElem = document.createElement('div');
