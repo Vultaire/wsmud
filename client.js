@@ -41,6 +41,7 @@ var Client = function () {
         currentCommand: null,
         outputBuffer: null,
         maxBufferLines: 1000,
+        ansiState: {},
         initialize: function (outputElem) {
             this.currentCommand = [];
             this.outputBuffer = "";
@@ -165,10 +166,69 @@ var Client = function () {
         },
         appendLine: function (input) {
             var shouldScroll = this.shouldAutoScroll;
-            this.currentLine.innerHTML += _.template('<%- input %>')({input: input});
+            var converted = this.convertLine(input);
+            this.currentLine.innerHTML += converted;
             this.detectPasswordPrompt(input);
             if (shouldScroll) {
                 setTimeout(this.autoScroll.bind(this), 0);
+            }
+        },
+        convertLine: function (input) {
+            /*
+              - Track current ANSI "state".
+              - For each ANSI code encountered:
+                - Update the state.
+                - Close the previous span (if needed)
+              - For each normal character encountered:
+                - Open a new span based on the current state (if needed)
+                - Append the HTML-escaped character
+             */
+            var result = [];
+            var i, c;
+            for (i=0; i<input.length; i++) {
+                c = input.charCodeAt(i);
+                if (!this.ansiState.parsing) {
+                    if (c === 27) {
+                        this.ansiState.parsing = true;
+                        this.ansiState.currentCode = [];
+                    } else {
+                        // TO DO: close previous span if needed
+                        // TO DO: open new span if needed
+                        result.push(this.escapeChar(String.fromCharCode(c)));
+                    }
+                } else {
+                    if (this.ansiState.currentCode.length == 0) {
+                        if (c === 91) {  // [
+                            this.ansiState.currentCode.push(c);
+                        } else if (64 <= c && c <= 95) {
+                            // Not sure if I need any of these for now.
+                            console.error(sprintf('Two character ansi sequence: [27, %d]', c));
+                        } else {
+                            // Wikipedia implies this is invalid.
+                            console.error(sprintf('Unexpected ansi sequence: [27, %d]', c));
+                        }
+                    } else {
+                        this.ansiState.currentCode.push(c);
+                        if (64 <= c && c <= 126) {
+                            console.log('ANSI CSI sequence:',
+                                        this.ansiState.currentCode.map(String.fromCharCode).join(''));
+                            this.ansiState.parsing = false;
+                        }
+                    }
+                }
+            }
+            return result.join('');
+        },
+        escapeChar: function (c) {
+            // ONLY for use as the *content* of an element.
+            // DO NOT USE IN ATTRIBUTES!
+            // For more robust escaping: http://wonko.com/post/html-escaping
+            if (c == '<') {
+                return '&lt;';
+            } else if (c == '>') {
+                return '&gt;';
+            } else {
+                return c;
             }
         },
         detectPasswordPrompt: function (input) {
