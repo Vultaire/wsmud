@@ -41,7 +41,11 @@ var Client = function () {
         currentCommand: null,
         outputBuffer: null,
         maxBufferLines: 1000,
-        ansiState: {},
+        ansiState: {
+            parsing: false,
+            currentCode: [],
+            outputState: {},
+        },
         initialize: function (outputElem) {
             this.currentCommand = [];
             this.outputBuffer = "";
@@ -185,47 +189,98 @@ var Client = function () {
              */
             var result = [];
             var i, c;
+            var client = this;
             for (i=0; i<input.length; i++) {
                 c = input.charCodeAt(i);
-                if (!this.ansiState.parsing) {
+                if (!client.ansiState.parsing) {
                     if (c === 27) {
-                        this.ansiState.parsing = true;
-                        this.ansiState.currentCode = [];
+                        client.ansiState.parsing = true;
+                        client.ansiState.currentCode = [];
                     } else {
                         // TO DO: close previous span if needed
                         // TO DO: open new span if needed
-                        result.push(this.escapeChar(String.fromCharCode(c)));
+                        result.push(client.escapeChar(String.fromCharCode(c)));
                     }
                 } else {
-                    if (this.ansiState.currentCode.length == 0) {
+                    if (client.ansiState.currentCode.length === 0) {
                         if (c === 91) {  // [
-                            this.ansiState.currentCode.push(c);
+                            client.ansiState.currentCode.push(c);
                         } else if (64 <= c && c <= 95) {
                             // Not sure if I need any of these for now.
                             console.error(sprintf('Two character ansi sequence: [27, %d]', c));
                         } else {
-                            // Wikipedia implies this is invalid.
+                            // Wikipedia implies client is invalid.
                             console.error(sprintf('Unexpected ansi sequence: [27, %d]', c));
                         }
                     } else {
-                        this.ansiState.currentCode.push(c);
                         if (64 <= c && c <= 126) {
-                            console.log('ANSI CSI sequence:',
-                                        this.ansiState.currentCode.map(String.fromCharCode).join(''));
-                            this.ansiState.parsing = false;
+                            if (c === 109) {  // m ("SGR - Select Graphic Rendition")
+                                var params = client.ansiState.currentCode.slice(1);
+                                params = params.map(function (charCode) {return String.fromCharCode(charCode)});
+                                params = params.join('').split(';');
+                                if (params.length === 1 && params[0] === '') {
+                                    params = ['0'];
+                                }
+                                params.forEach(function (param, index) {
+                                    param = parseInt(param);
+                                    if (param === 0) {
+                                        client.ansiState.outputState = {};
+                                    } else if (param === 1) {
+                                        client.ansiState.outputState.fgIntensity = true;
+                                    } else if (30 <= param && param <= 37) {
+                                        // FG colors
+                                        client.ansiState.outputState.fgColor = client.getColor(param % 10);
+                                    } else if (param === 39) {
+                                        delete client.ansiState.outputState.fgColor;
+                                    } else if (40 <= param && param <= 47) {
+                                        // BG colors
+                                        client.ansiState.outputState.bgColor = client.getColor(param % 10);
+                                    } else if (param === 49) {
+                                        delete client.ansiState.outputState.bgColor;
+                                    } else {
+                                        console.log(
+                                            sprintf(
+                                                'SGR: %s contains unexpected param at index %d',
+                                                client.ansiState.currentCode.map(String.fromCharCode).join('') + 'm',
+                                                index
+                                            )
+                                        );
+                                    }
+                                });
+                            } else {
+                                client.ansiState.currentCode.push(c);
+                                console.log('ANSI CSI sequence:',
+                                            client.ansiState.currentCode.map(String.fromCharCode).join(''));
+                            }
+                            console.log('Current output state:', client.ansiState.outputState);
+                            client.ansiState.parsing = false;
+                        } else {
+                            client.ansiState.currentCode.push(c);
                         }
                     }
                 }
             }
             return result.join('');
         },
+        getColor: function (i) {
+            return {
+                0: 'black',
+                1: 'red',
+                2: 'green',
+                3: 'yellow',
+                4: 'blue',
+                5: 'magenta',
+                6: 'cyan',
+                7: 'white',
+            }[i];
+        },
         escapeChar: function (c) {
             // ONLY for use as the *content* of an element.
             // DO NOT USE IN ATTRIBUTES!
             // For more robust escaping: http://wonko.com/post/html-escaping
-            if (c == '<') {
+            if (c === '<') {
                 return '&lt;';
-            } else if (c == '>') {
+            } else if (c === '>') {
                 return '&gt;';
             } else {
                 return c;
