@@ -40,6 +40,7 @@ var Client = function () {
         shouldAutoScroll: true,
         currentCommand: null,
         outputBuffer: null,
+        maxBufferLines: 1000,
         initialize: function (outputElem) {
             this.currentCommand = [];
             this.outputBuffer = "";
@@ -60,11 +61,11 @@ var Client = function () {
         onUserInput: function (userInput) {
             this.socket.send(userInput + '\n');
 
+            // Dunno if we were continuing a previous line, but we
+            // aren't now.
+            this.continueLine = false;
+            this.createNewLine();
             if (!this.passwordPrompt) {
-                // Dunno if we were continuing a previous line, but we
-                // aren't now.
-                this.continueLine = false;
-                this.createNewLine();
                 this.appendLine(userInput);
             }
         },
@@ -102,9 +103,8 @@ var Client = function () {
                         } else if (251 <= byte && byte <= 254) {
                             // Second byte of a 3-byte command; do nothing yet
                         } else if (byte === 255) {
-                            // Literal IAC
-                            // TO DO: do something with this ;)
-                            // ... likely unneeded for Aard...?
+                            // Literal byte 255
+                            rawOutputBuffer.push(byte)
                             this.currentCommand = [];
                         }
                     } else if (this.currentCommand.length === 3) {
@@ -124,8 +124,11 @@ var Client = function () {
             output = client.outputBuffer + output;
             var lines = output.split('\n\r');
             lines.forEach(function (line) {
-                var lineElem = client.currentLine;
-                if (!lineElem || !client.continueLine) {
+                var lineElem;
+                if (client.continueLine) {
+                    lineElem = client.currentLine;
+                    client.continueLine = false;
+                } else {
                     lineElem = client.createNewLine();
                     if (line.trim().length === 0) {
                         // Workaround for empty lines
@@ -152,6 +155,9 @@ var Client = function () {
             var lineElem = document.createElement('div');
             lineElem.classList.add('output-line');
             var shouldScroll = this.shouldAutoScroll;
+            while (this.maxBufferLines <= this.outputElem.querySelectorAll('div.output-line').length) {
+                this.outputElem.removeChild(this.outputElem.querySelector('div.output-line'));
+            }
             this.outputElem.appendChild(lineElem);
             this.currentLine = lineElem;
             if (shouldScroll) {
@@ -172,8 +178,6 @@ var Client = function () {
             this.passwordPrompt = (input.toLowerCase().indexOf('password') === 0);
         },
         autoScroll: function () {
-            // TO DO: Don't autoscroll if the user scrolls up from the
-            // bottom.
             var newScrollTop = this.outputElem.scrollHeight - this.outputElem.clientHeight;
             this.outputElem.scrollTop = this.outputElem.scrollHeight - this.outputElem.clientHeight;
         },
