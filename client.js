@@ -63,7 +63,7 @@ var Client = function () {
             this.socket.addEventListener('message', this.onMessage.bind(this));
             return this.socket;
         },
-        onUserInput: function (userInput) {
+        sendInput: function (userInput) {
             this.socket.send(userInput + '\n');
 
             // Dunno if we were continuing a previous line, but we
