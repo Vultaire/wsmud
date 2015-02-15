@@ -289,7 +289,7 @@ var Client = function () {
                                 console.log('ANSI CSI sequence:',
                                             client.ansiState.currentCode.map(String.fromCharCode).join(''));
                             }
-                            console.log('Current output state:', client.ansiState.outputState);
+                            //console.log('Current output state:', client.ansiState.outputState);
                             client.ansiState.parsing = false;
                         } else {
                             client.ansiState.currentCode.push(c);
