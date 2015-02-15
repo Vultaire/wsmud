@@ -21,7 +21,7 @@ var InputControl = {
             var val = this.inputElem.value;
             this.inputElem.setSelectionRange(0, val.length);
             var shouldSave = this.client.sendInput(val);
-            if (shouldSave && 0 < val.trim().length) {
+            if (shouldSave && 0 < val.trim().length && val !== this.history[this.history.length-1]) {
                 this.history.push(val);
                 while (this.maxHistory < this.history.length) {
                     this.history.shift();

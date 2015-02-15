@@ -178,16 +178,16 @@ var Client = function () {
             }
             return lineElem;
         },
-        appendLine: function (input) {
+        appendLine: function (output) {
             var shouldScroll = this.shouldAutoScroll;
-            var converted = this.convertLine(input);
-            this.currentLine.innerHTML += converted;
-            this.detectPasswordPrompt(input);
+            var coloredOutput = this.getColoredOutput(output);
+            this.currentLine.innerHTML += coloredOutput;
+            this.detectPasswordPrompt(output);  // Could break on partial packets...
             if (shouldScroll) {
                 setTimeout(this.autoScroll.bind(this), 0);
             }
         },
-        convertLine: function (input) {
+        getColoredOutput: function (output) {
             /*
               - Track current ANSI "state".
               - For each ANSI code encountered:
@@ -200,8 +200,9 @@ var Client = function () {
             var result = [];
             var i, c;
             var client = this;
-            for (i=0; i<input.length; i++) {
-                c = input.charCodeAt(i);
+            var inSpan = false;
+            for (i=0; i<output.length; i++) {
+                c = output.charCodeAt(i);
                 if (!client.ansiState.parsing) {
                     if (c === 27) {
                         client.ansiState.parsing = true;
@@ -209,11 +210,11 @@ var Client = function () {
                     } else {
                         if (client.ansiState.changed === true) {
                             client.ansiState.changed = false;
-                            if (client.ansiState.inSpan) {
+                            if (inSpan) {
                                 result.push('</span>');
                             }
                             if (0 < Object.keys(client.ansiState.outputState).length) {
-                                client.ansiState.inSpan = true;
+                                inSpan = true;
                                 // TO DO: Create the *real* span.
                                 var spanClasses = [];
                                 if (client.ansiState.outputState.fgColor) {
@@ -297,6 +298,9 @@ var Client = function () {
                     }
                 }
             }
+            if (inSpan) {
+                result.push('</span>');
+            }
             return result.join('');
         },
         getColor: function (i) {
@@ -323,8 +327,8 @@ var Client = function () {
                 return c;
             }
         },
-        detectPasswordPrompt: function (input) {
-            this.passwordPrompt = (input.toLowerCase().indexOf('password') === 0);
+        detectPasswordPrompt: function (output) {
+            this.passwordPrompt = (output.toLowerCase().indexOf('password') === 0);
         },
         autoScroll: function () {
             var newScrollTop = this.outputElem.scrollHeight - this.outputElem.clientHeight;
