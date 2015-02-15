@@ -207,6 +207,32 @@ var Client = function () {
                         client.ansiState.parsing = true;
                         client.ansiState.currentCode = [];
                     } else {
+                        if (client.ansiState.changed === true) {
+                            client.ansiState.changed = false;
+                            if (client.ansiState.inSpan) {
+                                result.push('</span>');
+                            }
+                            if (0 < Object.keys(client.ansiState.outputState).length) {
+                                client.ansiState.inSpan = true;
+                                // TO DO: Create the *real* span.
+                                var spanClasses = [];
+                                if (client.ansiState.outputState.fgColor) {
+                                    spanClasses.push(client.ansiState.outputState.fgColor);
+                                }
+                                if (client.ansiState.outputState.fgIntensity) {
+                                    spanClasses.push('intense');
+                                }
+                                if (client.ansiState.outputState.bgColor) {
+                                    spanClasses.push(sprintf('bg-%s', client.ansiState.outputState.bgColor));
+                                }
+                                spanClasses = spanClasses.join(' ');
+                                result.push(
+                                    _.template(
+                                        '<span<% if (classes.length > 0) { %> class="<%- classes %>"<% } %>>'
+                                    )({classes: spanClasses})
+                                );
+                            }
+                        }
                         // TO DO: close previous span if needed
                         // TO DO: open new span if needed
                         result.push(client.escapeChar(String.fromCharCode(c)));
@@ -257,6 +283,7 @@ var Client = function () {
                                         );
                                     }
                                 });
+                                client.ansiState.changed = true;
                             } else {
                                 client.ansiState.currentCode.push(c);
                                 console.log('ANSI CSI sequence:',

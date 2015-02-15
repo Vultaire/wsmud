@@ -1,0 +1,28 @@
+span.black {
+    color: grey;
+}
+span.red {
+    color: red;
+}
+span.green {
+    color: green;
+}
+span.yellow {
+    color: yellow;
+}
+span.blue {
+    color: blue;
+}
+span.magenta {
+    color: magenta;
+}
+span.cyan {
+    color: cyan;
+}
+span.white {
+    color: white;
+}
+
+span.intense {
+    font-weight: bold;
+}
