@@ -1,28 +1,55 @@
-span.black {
-    color: grey;
-}
-span.red {
-    color: red;
-}
-span.green {
-    color: green;
-}
-span.yellow {
-    color: yellow;
-}
-span.blue {
-    color: blue;
-}
-span.magenta {
-    color: magenta;
-}
-span.cyan {
-    color: cyan;
-}
-span.white {
-    color: white;
-}
+/* Color scheme shamelessly borrowed from xterm.
 
-span.intense {
-    font-weight: bold;
+   Source of the color scheme: http://en.wikipedia.org/wiki/Xterm
+   (More specifically:
+   http://upload.wikimedia.org/wikipedia/en/1/15/Xterm_256color_chart.svg)
+ */
+
+span.black, span.xterm-0 {
+    color: #000000;
+}
+span.red, span.xterm-1 {
+    color: #800000;
+}
+span.green, span.xterm-2 {
+    color: #008000;
+}
+span.yellow, span.xterm-3 {
+    color: #808000;
+}
+span.blue, span.xterm-4 {
+    color: #000080;
+}
+span.magenta, span.xterm-5 {
+    color: #800080;
+}
+span.cyan, span.xterm-6 {
+    color: #008080;
+}
+span.white, span.xterm-7 {
+    color: #c0c0c0;
+}
+span.black.intense, span.xterm-8 {
+    color: #808080;
+}
+span.red.intense, span.xterm-9 {
+    color: #ff0000;
+}
+span.green.intense, span.xterm-10 {
+    color: #00ff00;
+}
+span.yellow.intense, span.xterm-11 {
+    color: #ffff00;
+}
+span.blue.intense, span.xterm-12 {
+    color: #0000ff;
+}
+span.magenta.intense, span.xterm-13 {
+    color: #ff00ff;
+}
+span.cyan.intense, span.xterm-14 {
+    color: #00ffff;
+}
+span.white.intense, span.xterm-15 {
+    color: #ffffff;
 }

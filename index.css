@@ -22,5 +22,5 @@ div.input > input {
 div.output-line {
     font-family: monospace;
     white-space: pre-wrap;
-    color: white;
+    color: #c0c0c0;  /* ANSI "white", used as "default" coloring */
 }
