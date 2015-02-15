@@ -64,14 +64,24 @@ var Client = function () {
             return this.socket;
         },
         sendInput: function (userInput) {
+            /* Sends input to the MUD.
+
+               This function returns true if the input received should
+               be retained, and false if it should not (i.e. if this
+               input was believed to be in response to a password
+               prompt).
+             */
             this.socket.send(userInput + '\n');
 
             // Dunno if we were continuing a previous line, but we
             // aren't now.
             this.continueLine = false;
             this.createNewLine();
-            if (!this.passwordPrompt) {
+            if (this.passwordPrompt) {
+                return false;
+            } else {
                 this.appendLine(userInput);
+                return true;
             }
         },
         onMessage: function (event) {
