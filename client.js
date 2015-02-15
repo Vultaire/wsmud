@@ -258,33 +258,10 @@ var Client = function () {
                                 if (params.length === 1 && params[0] === '') {
                                     params = ['0'];
                                 }
-                                params.forEach(function (param, index) {
-                                    param = parseInt(param);
-                                    if (param === 0) {
-                                        client.ansiState.outputState = {};
-                                    } else if (param === 1) {
-                                        client.ansiState.outputState.fgIntensity = true;
-                                    } else if (30 <= param && param <= 37) {
-                                        // FG colors
-                                        client.ansiState.outputState.fgColor = client.getColor(param % 10);
-                                    } else if (param === 39) {
-                                        delete client.ansiState.outputState.fgColor;
-                                    } else if (40 <= param && param <= 47) {
-                                        // BG colors
-                                        client.ansiState.outputState.bgColor = client.getColor(param % 10);
-                                    } else if (param === 49) {
-                                        delete client.ansiState.outputState.bgColor;
-                                    } else {
-                                        console.log(
-                                            sprintf(
-                                                'SGR: %s contains unexpected param at index %d',
-                                                client.ansiState.currentCode.map(String.fromCharCode).join('') + 'm',
-                                                index
-                                            )
-                                        );
-                                    }
+                                params = params.map(function (param) {
+                                    return parseInt(param);
                                 });
-                                client.ansiState.changed = true;
+                                client._handleSGR(params);
                             } else {
                                 client.ansiState.currentCode.push(c);
                                 console.log('ANSI CSI sequence:',
@@ -302,6 +279,78 @@ var Client = function () {
                 result.push('</span>');
             }
             return result.join('');
+        },
+        _handleSGR: function (params) {
+            var client = this;
+            params.forEach(function (param) {
+                if (client.ansiState.parsingExtendedColor) {
+                    if (!client.ansiState.extendedColor) {
+                        client.ansiState.extendedColor = [param];
+                    } else if (client.ansiState.extendedColor[0] === 5) {
+                        // xterm 256 color mode
+                        var colorClass = sprintf('xterm-%d', param);
+                        if (client.ansiState.parsingExtendedFgColor) {
+                            client.ansiState.outputState.fgColor = colorClass;
+                        } else {
+                            client.ansiState.outputState.bgColor = colorClass;
+                        }
+                        client.ansiState.parsingExtendedColor = false;
+                        client.ansiState.extendedColor = null;
+                        client.ansiState.changed = true;
+                    } else if (client.ansiState.extendedColor[0] === 2) {
+                        // 24-bit color mode... not yet supported, but
+                        // we should at least collect the bytes.
+                        client.ansiState.extendedColor.push(param);
+                        if (client.ansiState.extendedColor.length === 4) {
+                            console.log('Received 24-bit color code (unsupported):', client.ansiState.extendedColor.slice(1));
+                            client.ansiState.parsingExtendedColor = false;
+                            client.ansiState.extendedColor = null;
+                        }
+                    } else {
+                        console.error('Unexpected extended color prefix:', client.ansiState.extendedColor[0]);
+                        client.ansiState.parsingExtendedColor = false;
+                        client.ansiState.extendedColor = null;
+                    }
+                } else {
+                    if (param === 0) {
+                        client.ansiState.outputState = {};
+                        client.ansiState.changed = true;
+                    } else if (param === 1) {
+                        client.ansiState.outputState.fgIntensity = true;
+                        client.ansiState.changed = true;
+                    } else if (30 <= param && param <= 37) {
+                        // FG colors
+                        client.ansiState.outputState.fgColor = client.getColor(param % 10);
+                        client.ansiState.changed = true;
+                    } else if (param === 38) {
+                        // FG extended color
+                        client.ansiState.parsingExtendedColor = true;
+                        client.ansiState.parsingExtendedFgColor = true;
+                    } else if (param === 39) {
+                        delete client.ansiState.outputState.fgColor;
+                        client.ansiState.changed = true;
+                    } else if (40 <= param && param <= 47) {
+                        // BG colors
+                        client.ansiState.outputState.bgColor = client.getColor(param % 10);
+                        client.ansiState.changed = true;
+                    } else if (param === 48) {
+                        // BG extended color
+                        client.ansiState.parsingExtendedColor = true;
+                        client.ansiState.parsingExtendedBgColor = true;
+                    } else if (param === 49) {
+                        delete client.ansiState.outputState.bgColor;
+                        client.ansiState.changed = true;
+                    } else {
+                        console.log(
+                            sprintf(
+                                'SGR: %s contains unexpected param at index %d',
+                                client.ansiState.currentCode.map(String.fromCharCode).join('') + 'm',
+                                index
+                            )
+                        );
+                    }
+                }
+            });
         },
         getColor: function (i) {
             return {
