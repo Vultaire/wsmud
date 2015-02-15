@@ -78,25 +78,39 @@ var Client = function () {
             this.continueLine = false;
             this.createNewLine();
             if (this.passwordPrompt) {
+                this.appendLine('&nbsp;');  // Hope this won't break later w/ escaping changes...
                 return false;
             } else {
-                this.appendLine(userInput);
+                if (userInput.trim().length === 0) {
+                    this.appendLine('&nbsp;');  // Hope this won't break later w/ escaping changes...
+                } else {
+                    this.appendLine(userInput);
+                }
                 return true;
             }
         },
         onMessage: function (event) {
-            var fr = new FileReader();
             var client = this;
-            fr.addEventListener('loadend', function () {
-                return client.handleMessage(fr.result);
-            });
-            fr.readAsArrayBuffer(event.data);
+            if (event.data.size) {
+                // event.data is likely a blob
+                var fr = new FileReader();
+                fr.addEventListener('loadend', function () {
+                    var uint8 = new Uint8Array(fr.result, 0, fr.result.length);
+                    client.handleMessage(uint8);
+                });
+                fr.readAsArrayBuffer(event.data);
+            } else {
+                // event.data is likely text
+                // Attempt to convert to bytes
+                var encoder = new TextEncoder('utf-8');  // Not sure if this is quite right...
+                var uint8 = encoder.encode(event.data);
+                client.handleMessage(uint8);
+            }
         },
         handleMessage: function (buffer) {
             var rawOutputBuffer = []
-            var uint8 = new Uint8Array(buffer, 0, buffer.length);
-            for (var i=0; i<uint8.length; i++) {
-                var byte = uint8[i];
+            for (var i=0; i<buffer.length; i++) {
+                var byte = buffer[i];
                 if (this.currentCommand.length === 0) {
                     if (byte === 255) {  // Interpret as Command (IAC)
                         this.currentCommand.push(byte);
