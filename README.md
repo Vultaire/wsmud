@@ -7,10 +7,12 @@ find spare time.  Don't use it for anything serious yet.  :)
 The main target for this is for use with Aardwolf MUD.  Intended
 feature sets have this in mind.
 
-To use with Aardwolf:
+To use:
 
-* Launch a WebSockets proxy server.  I've written one for Python 2.7.x
-  which is available here: https://github.com/Vultaire/websocket_proxy
+* If the MUD in question does not have a working WebSockets port,
+  launch a WebSockets proxy server.  I've written one (a simple/buggy
+  one which seems good enough for dev purposes) for Python 2.7.x which
+  is available here: https://github.com/Vultaire/websocket_proxy
 
 * Run "npm install".  (Assumes node.js and npm are installed and on
   the PATH.  This is not a node.js project; I simply use node for a
@@ -20,6 +22,6 @@ To use with Aardwolf:
 
 * Navigate to http://localhost:8080/.
 
-At the time of writing, input is done via the input box on the page,
-and the MUD's output comes back through the console.  This will likely
-change in the near future.
+At the time of writing, only Google Chrome works properly.  However,
+the client does work at a basic level.  Note that any telnet codes are
+not yet handled, but they are logged in the JavaScript console.
