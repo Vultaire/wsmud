@@ -59,7 +59,12 @@ var Client = function () {
             });
         },
         connect: function (addr) {
-            this.socket = new WebSocket(addr, ["telnet"]);
+            //this.socket = new WebSocket(addr, ["telnet"]);
+
+            // For now: not specifying any protocol.  (Might add this
+            // back in later; seems right.  But during development,
+            // it's convenient to have this off.)
+            this.socket = new WebSocket(addr);
             this.socket.addEventListener('message', this.onMessage.bind(this));
             return this.socket;
         },

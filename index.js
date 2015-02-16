@@ -29,8 +29,12 @@ var debug;
         inputControl.initialize(inputElem, client);
         inputControl.focus();
 
+        var host = window.prompt('Enter host', 'aardwolf.com');
+        var port = window.prompt('Enter port', '11333');
+        var url = sprintf("ws://%s:%s/", host, port);
+
         if (true) {
-            var socket = client.connect("ws://localhost:50008/");
+            var socket = client.connect(url);
             socket.addEventListener('open', function (e) {
                 console.log('Web socket opened successfully.');
             });
