@@ -38,6 +38,9 @@ var debug;
             socket.addEventListener('open', function (e) {
                 console.log('Web socket opened successfully.');
             });
+            socket.addEventListener('close', function (e) {
+                alert('The connection was closed.');
+            });
             socket.addEventListener('error', function (e) {
                 alert('Could not open web socket!');
             });
