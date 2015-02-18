@@ -1,375 +1,195 @@
-var Client = function () {
+var AnsiParser;
+var Client;
+
+(function () {
     'use strict';
-
-    var commandMap = {
-        240: 'SE',
-        241: 'NOP',
-        242: 'Data Mark',
-        243: 'BRK',
-        244: 'IP',
-        245: 'AO',
-        246: 'AYT',
-        247: 'EC',
-        248: 'EL',
-        249: 'GA',
-        250: 'SB',
-        251: 'WILL',
-        252: "WON'T",
-        253: 'DO',
-        254: "DON'T",
-        255: 'IAC',
-    };
-
-    var commandToString = function (command) {
-        if (!commandMap.hasOwnProperty(command)) {
-            return sprintf('Unknown <%d>', command);
-            throw {
-                name: 'ValueError',
-                message: 'Invalid command detected: ' + command.toString(),
-            };
-        }
-        return commandMap[command];
-    };
-
-    return {
-        socket: null,
-        outputElem: null,
-        currentLine: null,
-        continueLine: false,  // Probably not used so often with MUDs...
-        passwordPrompt: false,
-        shouldAutoScroll: true,
-        currentCommand: null,
-        outputBuffer: null,
-        maxBufferLines: 1000,
-        ansiState: {
-            parsing: false,
-            currentCode: [],
-            outputState: {},
+    AnsiParser = {
+        // Simple state machine for parsing a subset of ANSI codes.
+        initialize: function () {
+            this.state = 'normal',
+            this.changed = false;
+            this.inSpan = false;
+            this.outputBuffer = [];
+            this.outputMode = {};
+            this.ansiCode = null;
+            return this;
         },
-        initialize: function (outputElem) {
-            this.currentCommand = [];
-            this.outputBuffer = "";
-            this.outputElem = outputElem;
-            var client = this;
-            this.outputElem.addEventListener('scroll', function () {
-                client.shouldAutoScroll = (
-                    client.outputElem.scrollTop ===
-                    client.outputElem.scrollHeight - client.outputElem.clientHeight
-                );
-            });
+        getHTML: function (ansiText) {
+            var parser = this;
+            var handler;
+            var result;
+            var state;
+            this.input = ansiText;
+            this.inputIndex = 0;
+            while (this.inputIndex < this.input.length) {
+                state = this[this.state + 'State'].bind(this);
+                state();
+            }
+            if (this.inSpan) {
+                this.outputBuffer.push('</span>');
+                this.inSpan = false;
+            }
+            result = this.outputBuffer.join('');
+            this.outputBuffer = [];
+            return result;
         },
-        connect: function (addr) {
-            //this.socket = new WebSocket(addr, ["telnet"]);
-
-            // For now: not specifying any protocol.  (Might add this
-            // back in later; seems right.  But during development,
-            // it's convenient to have this off.)
-            this.socket = new WebSocket(addr);
-            this.socket.addEventListener('message', this.onMessage.bind(this));
-            return this.socket;
-        },
-        sendInput: function (userInput) {
-            /* Sends input to the MUD.
-
-               This function returns true if the input received should
-               be retained, and false if it should not (i.e. if this
-               input was believed to be in response to a password
-               prompt).
-             */
-            this.socket.send(userInput + '\n');
-
-            // Dunno if we were continuing a previous line, but we
-            // aren't now.
-            this.continueLine = false;
-            this.createNewLine();
-            if (this.passwordPrompt) {
-                this.appendLine('&nbsp;');  // Hope this won't break later w/ escaping changes...
-                return false;
-            } else {
-                if (userInput.trim().length === 0) {
-                    this.appendLine('&nbsp;');  // Hope this won't break later w/ escaping changes...
-                } else {
-                    this.appendLine(userInput);
+        normalState: function (code) {
+            var code, result, spanClasses;
+            while (true) {
+                code = this.getNextChar();
+                if (typeof code === 'undefined') {
+                    return;
                 }
-                return true;
-            }
-        },
-        onMessage: function (event) {
-            var client = this;
-            if (event.data.size) {
-                // event.data is likely a blob
-                var fr = new FileReader();
-                fr.addEventListener('loadend', function () {
-                    var uint8 = new Uint8Array(fr.result, 0, fr.result.length);
-                    client.handleMessage(uint8);
-                });
-                fr.readAsArrayBuffer(event.data);
-            } else {
-                // event.data is likely text
-                // Attempt to convert to bytes
-                var encoder = new TextEncoder('utf-8');  // Not sure if this is quite right...
-                var uint8 = encoder.encode(event.data);
-                client.handleMessage(uint8);
-            }
-        },
-        handleMessage: function (buffer) {
-            var rawOutputBuffer = []
-            for (var i=0; i<buffer.length; i++) {
-                var byte = buffer[i];
-                if (this.currentCommand.length === 0) {
-                    if (byte === 255) {  // Interpret as Command (IAC)
-                        this.currentCommand.push(byte);
-                    } else {
-                        rawOutputBuffer.push(byte);
-                    }
+                if (code === 27) {
+                    this.state = 'ansi';
+                    return;
                 } else {
-                    this.currentCommand.push(byte);
-                    if (this.currentCommand.length === 2) {
-                        if (byte < 240) {
-                            // Invalid telnet command
-                            console.log(this.currentCommand.map(commandToString));
-                            this.currentCommand = [];
-                        } else if (240 <= byte && byte <= 250) {
-                            // Valid 2-byte telnet command
-                            console.log(this.currentCommand.map(commandToString));
-                            // TO DO: do something with this ;)
-                            this.currentCommand = [];
-                        } else if (251 <= byte && byte <= 254) {
-                            // Second byte of a 3-byte command; do nothing yet
-                        } else if (byte === 255) {
-                            // Literal byte 255
-                            rawOutputBuffer.push(byte)
-                            this.currentCommand = [];
+                    if (this.changed) {
+                        this.changed = false;
+                        if (this.inSpan) {
+                            this.outputBuffer.push('</span>');
+                            this.inSpan = false;
                         }
-                    } else if (this.currentCommand.length === 3) {
-                        console.log(this.currentCommand.map(commandToString));
-                        // TO DO: do something with this ;)
-                        this.currentCommand = [];
+                        if (0 < Object.keys(this.outputMode).length) {
+                            this.inSpan = true;
+                            spanClasses = [];
+                            if (this.outputMode.fgColor) {
+                                spanClasses.push(this.outputMode.fgColor);
+                            }
+                            if (this.outputMode.fgIntensity) {
+                                spanClasses.push('intense');
+                            }
+                            if (this.outputMode.bgColor) {
+                                spanClasses.push(sprintf('bg-%s', this.outputMode.bgColor));
+                            }
+                            spanClasses = spanClasses.join(' ');
+                            this.outputBuffer.push(
+                                _.template(
+                                    '<span<% if (classes.length > 0) { %> class="<%- classes %>"<% } %>>'
+                                )({classes: spanClasses})
+                            );
+                        }
                     }
-                    // Try to interpret command
+                    this.outputBuffer.push(this.escapeChar(String.fromCharCode(code)));
                 }
             }
-            var output = String.fromCharCode.apply(null, rawOutputBuffer);
-            this.pushOutput(output);
         },
-        pushOutput: function (output) {
-            var client = this;
-            // Precede output with any leftover bits from previous packets
-            output = client.outputBuffer + output;
-            var lines = output.split('\n\r');
-            lines.forEach(function (line) {
-                var lineElem;
-                if (client.continueLine) {
-                    lineElem = client.currentLine;
-                    client.continueLine = false;
+        ansiState: function (code) {
+            var ansiCode = [];  // Reminder: ESC (27) has already been received.
+            var code;
+            while (true) {
+                code = this.getNextChar();
+                if (typeof code === 'undefined') {
+                    return;
+                }
+                if (ansiCode.length === 0) {
+                    if (code === 91) {  // '[' character
+                        ansiCode.push(code);
+                    } else if (64 <= code && code <= 95) {
+                        // Not sure if I need any of these for now.
+                        console.error(sprintf('Two character ansi sequence: [27, %d]', code));
+                        this.state = 'normal';
+                        return;
+                    } else {
+                        // Wikipedia implies code is invalid.
+                        console.error(sprintf('Unexpected ansi sequence: [27, %d]', code));
+                        this.state = 'normal';
+                        return;
+                    }
                 } else {
-                    lineElem = client.createNewLine();
-                    if (line.trim().length === 0) {
-                        // Workaround for empty lines
-                        lineElem.innerHTML = '&nbsp;';
+                    ansiCode.push(code);
+                    if (64 <= code && code <= 126) {
+                        if (code === 109) {
+                            this._handleSGR(ansiCode);
+                        } else {
+                            console.log('ANSI CSI sequence:',
+                                        ansiCode.map(String.fromCharCode).join(''));
+                        }
+                        //console.log('Current output state:', client.ansiState.outputState);
+                        this.state = 'normal';
                         return;
                     }
                 }
-                if (line.charAt(line.length-1) === '\n') {
-                    client.outputBuffer = '\n';
-                    line = line.slice(0, line.length-2);
-                }
-                client.appendLine(line);
+            }
+        },
+        _handleSGR: function (ansiCode) {
+            // Extract params and convert to integers
+            var params = ansiCode.slice(1, -1);
+            params = params.map(function (charCode) {
+                return String.fromCharCode(charCode);
             });
-            // If we ended on a new line, our final line in the
-            // line list should be empty.  If this is *not* true,
-            // then we should continue from the current line on
-            // the next call.
-            client.continueLine = lines[lines.length-1] !== '';
-        },
-        createNewLine: function () {
-            var lineElem = document.createElement('div');
-            lineElem.classList.add('output-line');
-            var shouldScroll = this.shouldAutoScroll;
-            while (this.maxBufferLines <= this.outputElem.querySelectorAll('div.output-line').length) {
-                this.outputElem.removeChild(this.outputElem.querySelector('div.output-line'));
+            params = params.join('').split(';');
+            if (params.length === 1 && params[0] === '') {
+                params = ['0'];
             }
-            this.outputElem.appendChild(lineElem);
-            this.currentLine = lineElem;
-            if (shouldScroll) {
-                // Seems we need to release to the browser to allow redrawing/resizing.
-                setTimeout(this.autoScroll.bind(this), 0);
-            }
-            return lineElem;
-        },
-        appendLine: function (output) {
-            var shouldScroll = this.shouldAutoScroll;
-            var coloredOutput = this.getColoredOutput(output);
-            this.currentLine.innerHTML += coloredOutput;
-            this.detectPasswordPrompt(output);  // Could break on partial packets...
-            if (shouldScroll) {
-                setTimeout(this.autoScroll.bind(this), 0);
-            }
-        },
-        getColoredOutput: function (output) {
-            /*
-              - Track current ANSI "state".
-              - For each ANSI code encountered:
-                - Update the state.
-                - Close the previous span (if needed)
-              - For each normal character encountered:
-                - Open a new span based on the current state (if needed)
-                - Append the HTML-escaped character
-             */
-            var result = [];
-            var i, c;
-            var client = this;
-            var inSpan = false;
-            for (i=0; i<output.length; i++) {
-                c = output.charCodeAt(i);
-                if (!client.ansiState.parsing) {
-                    if (c === 27) {
-                        client.ansiState.parsing = true;
-                        client.ansiState.currentCode = [];
-                    } else {
-                        if (client.ansiState.changed === true) {
-                            client.ansiState.changed = false;
-                            if (inSpan) {
-                                result.push('</span>');
-                            }
-                            if (0 < Object.keys(client.ansiState.outputState).length) {
-                                inSpan = true;
-                                // TO DO: Create the *real* span.
-                                var spanClasses = [];
-                                if (client.ansiState.outputState.fgColor) {
-                                    spanClasses.push(client.ansiState.outputState.fgColor);
-                                }
-                                if (client.ansiState.outputState.fgIntensity) {
-                                    spanClasses.push('intense');
-                                }
-                                if (client.ansiState.outputState.bgColor) {
-                                    spanClasses.push(sprintf('bg-%s', client.ansiState.outputState.bgColor));
-                                }
-                                spanClasses = spanClasses.join(' ');
-                                result.push(
-                                    _.template(
-                                        '<span<% if (classes.length > 0) { %> class="<%- classes %>"<% } %>>'
-                                    )({classes: spanClasses})
-                                );
-                            }
-                        }
-                        // TO DO: close previous span if needed
-                        // TO DO: open new span if needed
-                        result.push(client.escapeChar(String.fromCharCode(c)));
-                    }
-                } else {
-                    if (client.ansiState.currentCode.length === 0) {
-                        if (c === 91) {  // [
-                            client.ansiState.currentCode.push(c);
-                        } else if (64 <= c && c <= 95) {
-                            // Not sure if I need any of these for now.
-                            console.error(sprintf('Two character ansi sequence: [27, %d]', c));
-                        } else {
-                            // Wikipedia implies client is invalid.
-                            console.error(sprintf('Unexpected ansi sequence: [27, %d]', c));
-                        }
-                    } else {
-                        if (64 <= c && c <= 126) {
-                            if (c === 109) {  // m ("SGR - Select Graphic Rendition")
-                                var params = client.ansiState.currentCode.slice(1);
-                                params = params.map(function (charCode) {return String.fromCharCode(charCode)});
-                                params = params.join('').split(';');
-                                if (params.length === 1 && params[0] === '') {
-                                    params = ['0'];
-                                }
-                                params = params.map(function (param) {
-                                    return parseInt(param);
-                                });
-                                client._handleSGR(params);
-                            } else {
-                                client.ansiState.currentCode.push(c);
-                                console.log('ANSI CSI sequence:',
-                                            client.ansiState.currentCode.map(String.fromCharCode).join(''));
-                            }
-                            //console.log('Current output state:', client.ansiState.outputState);
-                            client.ansiState.parsing = false;
-                        } else {
-                            client.ansiState.currentCode.push(c);
-                        }
-                    }
-                }
-            }
-            if (inSpan) {
-                result.push('</span>');
-            }
-            return result.join('');
-        },
-        _handleSGR: function (params) {
-            var client = this;
-            params.forEach(function (param) {
-                if (client.ansiState.parsingExtendedColor) {
-                    if (!client.ansiState.extendedColor) {
-                        client.ansiState.extendedColor = [param];
-                    } else if (client.ansiState.extendedColor[0] === 5) {
-                        // xterm 256 color mode
-                        var colorClass = sprintf('xterm-%d', param);
-                        if (client.ansiState.parsingExtendedFgColor) {
-                            client.ansiState.outputState.fgColor = colorClass;
-                        } else {
-                            client.ansiState.outputState.bgColor = colorClass;
-                        }
-                        client.ansiState.parsingExtendedColor = false;
-                        client.ansiState.extendedColor = null;
-                        client.ansiState.changed = true;
-                    } else if (client.ansiState.extendedColor[0] === 2) {
-                        // 24-bit color mode... not yet supported, but
-                        // we should at least collect the bytes.
-                        client.ansiState.extendedColor.push(param);
-                        if (client.ansiState.extendedColor.length === 4) {
-                            console.log('Received 24-bit color code (unsupported):', client.ansiState.extendedColor.slice(1));
-                            client.ansiState.parsingExtendedColor = false;
-                            client.ansiState.extendedColor = null;
-                        }
-                    } else {
-                        console.error('Unexpected extended color prefix:', client.ansiState.extendedColor[0]);
-                        client.ansiState.parsingExtendedColor = false;
-                        client.ansiState.extendedColor = null;
-                    }
-                } else {
-                    if (param === 0) {
-                        client.ansiState.outputState = {};
-                        client.ansiState.changed = true;
-                    } else if (param === 1) {
-                        client.ansiState.outputState.fgIntensity = true;
-                        client.ansiState.changed = true;
-                    } else if (30 <= param && param <= 37) {
-                        // FG colors
-                        client.ansiState.outputState.fgColor = client.getColor(param % 10);
-                        client.ansiState.changed = true;
-                    } else if (param === 38) {
-                        // FG extended color
-                        client.ansiState.parsingExtendedColor = true;
-                        client.ansiState.parsingExtendedFgColor = true;
-                    } else if (param === 39) {
-                        delete client.ansiState.outputState.fgColor;
-                        client.ansiState.changed = true;
-                    } else if (40 <= param && param <= 47) {
-                        // BG colors
-                        client.ansiState.outputState.bgColor = client.getColor(param % 10);
-                        client.ansiState.changed = true;
-                    } else if (param === 48) {
-                        // BG extended color
-                        client.ansiState.parsingExtendedColor = true;
-                        client.ansiState.parsingExtendedBgColor = true;
-                    } else if (param === 49) {
-                        delete client.ansiState.outputState.bgColor;
-                        client.ansiState.changed = true;
-                    } else {
-                        console.log(
-                            sprintf(
-                                'SGR: %s contains unexpected param at index %d',
-                                client.ansiState.currentCode.map(String.fromCharCode).join('') + 'm',
-                                index
-                            )
-                        );
-                    }
-                }
+            params = params.map(function (param) {
+                return parseInt(param);
             });
+
+            var parser = this;
+
+            var getExtendedColor = function (params, i, fgOrBg) {
+                // Sets extended color if found.  Returns the adjusted
+                // parsing index, considering the lookahead needed for
+                // the different extended color types.
+                if (params[i+1] === 5) {
+                    if (i+2 < params.length) {
+                        var colorClass = sprintf('xterm-%d', params[i+2]);
+                        parser.outputMode[fgOrBg + 'Color'] = colorClass;
+                    }
+                    return i+2;
+                } else if (params[i+1] === 2) {
+                    var colorCode = sprintf(
+                        '#%02X%02X%02X', params[i+2], params[i+3], params[i+4]);
+                    console.log('Received 24-bit color code (not yet supported):',
+                        colorCode);
+                    return i+4;
+                } else {
+                    console.error('Unexpected extended color prefix:', parser.ansiState.extendedColor[0]);
+                    return i+1;
+                }
+            };
+
+            var i;
+            var param;
+            for (i=0; i<params.length; i++) {
+                param = params[i];
+                if (param === 0) {
+                    parser.outputMode = {};
+                    parser.changed = true;
+                } else if (param === 1) {
+                    parser.outputMode.fgIntensity = true;
+                    parser.changed = true;
+                } else if (30 <= param && param <= 37) {
+                    // FG colors
+                    parser.outputMode.fgColor = parser.getColor(param % 10);
+                    parser.changed = true;
+                } else if (param === 38) {
+                    // FG extended color
+                    i = getExtendedColor(params, i, 'fg');
+                } else if (param === 39) {
+                    delete parser.outputMode.fgColor;
+                    parser.changed = true;
+                } else if (40 <= param && param <= 47) {
+                    // BG colors
+                    parser.outputMode.bgColor = parser.getColor(param % 10);
+                    parser.changed = true;
+                } else if (param === 48) {
+                    // BG extended color
+                    i = getExtendedColor(params, i, 'bg');
+                } else if (param === 49) {
+                    delete parser.outputMode.bgColor;
+                    parser.changed = true;
+                } else {
+                    console.log(
+                        sprintf(
+                            'SGR: %s contains unexpected param at index %d',
+                            parser.ansiState.currentCode.map(String.fromCharCode).join('') + 'm',
+                            index
+                        )
+                    );
+                }
+            }
         },
         getColor: function (i) {
             return {
@@ -395,12 +215,234 @@ var Client = function () {
                 return c;
             }
         },
-        detectPasswordPrompt: function (output) {
-            this.passwordPrompt = (output.toLowerCase().indexOf('password') === 0);
-        },
-        autoScroll: function () {
-            var newScrollTop = this.outputElem.scrollHeight - this.outputElem.clientHeight;
-            this.outputElem.scrollTop = this.outputElem.scrollHeight - this.outputElem.clientHeight;
-        },
+        getNextChar: function () {
+            var c = this.input[this.inputIndex];
+            this.inputIndex += 1;
+            if (typeof c !== 'undefined') {
+                return c.charCodeAt(0);
+            }
+            return c;
+        }
     };
-}();
+
+    Client = function () {
+        var commandMap = {
+            240: 'SE',
+            241: 'NOP',
+            242: 'Data Mark',
+            243: 'BRK',
+            244: 'IP',
+            245: 'AO',
+            246: 'AYT',
+            247: 'EC',
+            248: 'EL',
+            249: 'GA',
+            250: 'SB',
+            251: 'WILL',
+            252: "WON'T",
+            253: 'DO',
+            254: "DON'T",
+            255: 'IAC',
+        };
+
+        var commandToString = function (command) {
+            if (!commandMap.hasOwnProperty(command)) {
+                return sprintf('Unknown <%d>', command);
+                throw {
+                    name: 'ValueError',
+                    message: 'Invalid command detected: ' + command.toString(),
+                };
+            }
+            return commandMap[command];
+        };
+
+        return {
+            socket: null,
+            outputElem: null,
+            currentLine: null,
+            continueLine: false,  // Probably not used so often with MUDs...
+            passwordPrompt: false,
+            shouldAutoScroll: true,
+            currentCommand: null,
+            outputBuffer: null,
+            maxBufferLines: 1000,
+            ansiParser: null,
+            initialize: function (outputElem) {
+                this.ansiParser = Object.create(AnsiParser).initialize();
+                this.currentCommand = [];
+                this.outputBuffer = "";
+                this.outputElem = outputElem;
+                var client = this;
+                this.outputElem.addEventListener('scroll', function () {
+                    client.shouldAutoScroll = (
+                        client.outputElem.scrollTop ===
+                            client.outputElem.scrollHeight - client.outputElem.clientHeight
+                    );
+                });
+                return this;
+            },
+            connect: function (addr) {
+                //this.socket = new WebSocket(addr, ["telnet"]);
+
+                // For now: not specifying any protocol.  (Might add this
+                // back in later; seems right.  But during development,
+                // it's convenient to have this off.)
+                this.socket = new WebSocket(addr);
+                this.socket.addEventListener('message', this.onMessage.bind(this));
+                return this.socket;
+            },
+            sendInput: function (userInput) {
+                /* Sends input to the MUD.
+
+                   This function returns true if the input received should
+                   be retained, and false if it should not (i.e. if this
+                   input was believed to be in response to a password
+                   prompt).
+                */
+                this.socket.send(userInput + '\n');
+
+                // Dunno if we were continuing a previous line, but we
+                // aren't now.
+                this.continueLine = false;
+                this.createNewLine();
+                if (this.passwordPrompt) {
+                    this.appendLine('&nbsp;');  // Hope this won't break later w/ escaping changes...
+                    return false;
+                } else {
+                    if (userInput.trim().length === 0) {
+                        this.appendLine('&nbsp;');  // Hope this won't break later w/ escaping changes...
+                    } else {
+                        this.appendLine(userInput);
+                    }
+                    return true;
+                }
+            },
+            onMessage: function (event) {
+                var client = this;
+                if (event.data.size) {
+                    // event.data is likely a blob
+                    var fr = new FileReader();
+                    fr.addEventListener('loadend', function () {
+                        var uint8 = new Uint8Array(fr.result, 0, fr.result.length);
+                        client.handleMessage(uint8);
+                    });
+                    fr.readAsArrayBuffer(event.data);
+                } else {
+                    // Process Aardwolf style - assume that the unicode
+                    // code of the characters maps to the desired telnet
+                    // code.  (Benefit: no messing with encoding and
+                    // simple string.charCodeAt calls work as expected.
+                    // Downside: can't use those extended codes under
+                    // normal circumstances (which may be a non-issue
+                    // anyway).
+                    var uint8 = Array.prototype.slice.call(event.data).map(function (c) {
+                        return c.charCodeAt(0);
+                    });
+                    client.handleMessage(uint8);
+                }
+            },
+            handleMessage: function (buffer) {
+                var rawOutputBuffer = []
+                for (var i=0; i<buffer.length; i++) {
+                    var byte = buffer[i];
+                    if (this.currentCommand.length === 0) {
+                        if (byte === 255) {  // Interpret as Command (IAC)
+                            this.currentCommand.push(byte);
+                        } else {
+                            rawOutputBuffer.push(byte);
+                        }
+                    } else {
+                        this.currentCommand.push(byte);
+                        if (this.currentCommand.length === 2) {
+                            if (byte < 240) {
+                                // Invalid telnet command
+                                console.log(this.currentCommand.map(commandToString));
+                                this.currentCommand = [];
+                            } else if (240 <= byte && byte <= 250) {
+                                // Valid 2-byte telnet command
+                                console.log(this.currentCommand.map(commandToString));
+                                // TO DO: do something with this ;)
+                                this.currentCommand = [];
+                            } else if (251 <= byte && byte <= 254) {
+                                // Second byte of a 3-byte command; do nothing yet
+                            } else if (byte === 255) {
+                                // Literal byte 255
+                                rawOutputBuffer.push(byte)
+                                this.currentCommand = [];
+                            }
+                        } else if (this.currentCommand.length === 3) {
+                            console.log(this.currentCommand.map(commandToString));
+                            // TO DO: do something with this ;)
+                            this.currentCommand = [];
+                        }
+                        // Try to interpret command
+                    }
+                }
+                var output = String.fromCharCode.apply(null, rawOutputBuffer);
+                this.pushOutput(output);
+            },
+            pushOutput: function (output) {
+                var client = this;
+                // Precede output with any leftover bits from previous packets
+                output = client.outputBuffer + output;
+                var lines = output.split('\n\r');
+                lines.forEach(function (line) {
+                    var lineElem;
+                    if (client.continueLine) {
+                        lineElem = client.currentLine;
+                        client.continueLine = false;
+                    } else {
+                        lineElem = client.createNewLine();
+                        if (line.trim().length === 0) {
+                            // Workaround for empty lines
+                            lineElem.innerHTML = '&nbsp;';
+                            return;
+                        }
+                    }
+                    if (line.charAt(line.length-1) === '\n') {
+                        client.outputBuffer = '\n';
+                        line = line.slice(0, line.length-2);
+                    }
+                    client.appendLine(line);
+                });
+                // If we ended on a new line, our final line in the
+                // line list should be empty.  If this is *not* true,
+                // then we should continue from the current line on
+                // the next call.
+                client.continueLine = lines[lines.length-1] !== '';
+            },
+            createNewLine: function () {
+                var lineElem = document.createElement('div');
+                lineElem.classList.add('output-line');
+                var shouldScroll = this.shouldAutoScroll;
+                while (this.maxBufferLines <= this.outputElem.querySelectorAll('div.output-line').length) {
+                    this.outputElem.removeChild(this.outputElem.querySelector('div.output-line'));
+                }
+                this.outputElem.appendChild(lineElem);
+                this.currentLine = lineElem;
+                if (shouldScroll) {
+                    // Seems we need to release to the browser to allow redrawing/resizing.
+                    setTimeout(this.autoScroll.bind(this), 0);
+                }
+                return lineElem;
+            },
+            appendLine: function (output) {
+                var shouldScroll = this.shouldAutoScroll;
+                var coloredOutput = this.ansiParser.getHTML(output);
+                this.currentLine.innerHTML += coloredOutput;
+                this.detectPasswordPrompt(output);  // Could break on partial packets...
+                if (shouldScroll) {
+                    setTimeout(this.autoScroll.bind(this), 0);
+                }
+            },
+            detectPasswordPrompt: function (output) {
+                this.passwordPrompt = (output.toLowerCase().indexOf('password') === 0);
+            },
+            autoScroll: function () {
+                var newScrollTop = this.outputElem.scrollHeight - this.outputElem.clientHeight;
+                this.outputElem.scrollTop = this.outputElem.scrollHeight - this.outputElem.clientHeight;
+            },
+        };
+    }();
+
+})()
