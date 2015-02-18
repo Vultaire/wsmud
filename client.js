@@ -260,7 +260,7 @@ var Client;
             socket: null,
             outputElem: null,
             currentLine: null,
-            continueLine: false,  // Probably not used so often with MUDs...
+            continueLine: false,
             passwordPrompt: false,
             shouldAutoScroll: true,
             currentCommand: null,
