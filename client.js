@@ -267,6 +267,7 @@ var Client;
             outputBuffer: null,
             maxBufferLines: 1000,
             ansiParser: null,
+            sendMode: 'binary',
             initialize: function (outputElem) {
                 this.ansiParser = Object.create(AnsiParser).initialize();
                 this.currentCommand = [];
@@ -287,9 +288,25 @@ var Client;
                 // For now: not specifying any protocol.  (Might add this
                 // back in later; seems right.  But during development,
                 // it's convenient to have this off.)
+                if (addr.toLowerCase().indexOf('aard') !== -1) {
+                    // For Aardwolf: use text frames.  (I hope to
+                    // convince people that binary frames are best for
+                    // telnet-over-websockets, but for the purpose of
+                    // development, I'll make this a special case for
+                    // now.)
+                    this.sendMode = 'text';
+                }
                 this.socket = new WebSocket(addr);
                 this.socket.addEventListener('message', this.onMessage.bind(this));
                 return this.socket;
+            },
+            sendTelnet: function () {
+                if (this.sendMode === 'binary') {
+                    // implement arraybuffer generation...
+                } else {
+                    // implement string generation...
+                }
+                // send the generated data struct
             },
             sendInput: function (userInput) {
                 /* Sends input to the MUD.
