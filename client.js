@@ -226,23 +226,40 @@ var Client;
     };
 
     Client = function () {
+        var SE = 240;
+        var NOP = 241;
+        var DM = 242;   // DM == Data Mark
+        var BRK = 243;
+        var IP = 244;
+        var AO = 245;
+        var AYT = 246;
+        var EC = 247;
+        var EL = 248;
+        var GA = 249;
+        var SB = 250;
+        var WILL = 251;
+        var WONT = 252;
+        var DO = 253;
+        var DONT = 254;
+        var IAC = 255;
+
         var commandMap = {
-            240: 'SE',
-            241: 'NOP',
-            242: 'Data Mark',
-            243: 'BRK',
-            244: 'IP',
-            245: 'AO',
-            246: 'AYT',
-            247: 'EC',
-            248: 'EL',
-            249: 'GA',
-            250: 'SB',
-            251: 'WILL',
-            252: "WON'T",
-            253: 'DO',
-            254: "DON'T",
-            255: 'IAC',
+            SE: 'SE',
+            NOP: 'NOP',
+            DM: 'Data Mark',
+            BRK: 'BRK',
+            IP: 'IP',
+            AO: 'AO',
+            AYT: 'AYT',
+            EC: 'EC',
+            EL: 'EL',
+            GA: 'GA',
+            SB: 'SB',
+            WILL: 'WILL',
+            WONT: "WON'T",
+            DO: 'DO',
+            DONT: "DON'T",
+            IAC: 'IAC',
         };
 
         var commandToString = function (command) {
@@ -258,6 +275,7 @@ var Client;
 
         return {
             socket: null,
+            rawFilters: null,
             outputElem: null,
             currentLine: null,
             continueLine: false,
@@ -269,6 +287,7 @@ var Client;
             ansiParser: null,
             sendMode: 'binary',
             initialize: function (outputElem) {
+                this.rawFilters = [];
                 this.ansiParser = Object.create(AnsiParser).initialize();
                 this.currentCommand = [];
                 this.outputBuffer = "";
@@ -281,6 +300,9 @@ var Client;
                     );
                 });
                 return this;
+            },
+            addRawFilter: function (filter) {
+                this.rawFilters.push(filter);
             },
             connect: function (addr) {
                 //this.socket = new WebSocket(addr, ["telnet"]);
@@ -359,11 +381,19 @@ var Client;
                 }
             },
             handleMessage: function (buffer) {
+                for (var i=0; i<this.rawFilters.length; i++) {
+                    buffer = this.rawFilters[i](buffer);
+                }
+                buffer = this.fallbackTelnetFilter(buffer);
+                var output = String.fromCharCode.apply(null, buffer);
+                this.pushOutput(output);
+            },
+            fallbackTelnetFilter: function (buffer) {
                 var rawOutputBuffer = []
                 for (var i=0; i<buffer.length; i++) {
                     var byte = buffer[i];
                     if (this.currentCommand.length === 0) {
-                        if (byte === 255) {  // Interpret as Command (IAC)
+                        if (byte === IAC) {
                             this.currentCommand.push(byte);
                         } else {
                             rawOutputBuffer.push(byte);
@@ -395,8 +425,7 @@ var Client;
                         // Try to interpret command
                     }
                 }
-                var output = String.fromCharCode.apply(null, rawOutputBuffer);
-                this.pushOutput(output);
+                return rawOutputBuffer;
             },
             pushOutput: function (output) {
                 var client = this;
