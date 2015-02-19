@@ -300,6 +300,7 @@ var Client;
             return this;
         },
         addRawFilter: function (filter) {
+            console.log('Adding filter:', filter);
             this.rawFilters.push(filter);
         },
         connect: function (addr) {
@@ -380,7 +381,7 @@ var Client;
         },
         handleMessage: function (buffer) {
             for (var i=0; i<this.rawFilters.length; i++) {
-                buffer = this.rawFilters[i](buffer);
+                buffer = this.rawFilters[i].filter(this.socket, buffer);
             }
             buffer = this.fallbackTelnetFilter(buffer);
             var output = String.fromCharCode.apply(null, buffer);

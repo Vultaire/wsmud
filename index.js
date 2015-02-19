@@ -21,8 +21,9 @@ var debug;
     document.addEventListener('DOMContentLoaded', function () {
         onResize();
 
-        var client = Object.create(Client);
-        client.initialize(document.querySelector('div.output'));
+        var client = Object.create(Client).initialize(
+            document.querySelector('div.output'));
+        client.addRawFilter(Object.create(MCCPFilter).initialize());
 
         var inputElem = document.querySelector('div.input > input.input');
         var inputControl = Object.create(InputControl);
