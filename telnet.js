@@ -65,7 +65,6 @@ var TelnetFilter;
                     }
                 } else if (this.currentCode.length == 2) {
                     this.currentCode.push(code);
-                    console.log('Current code:', this.currentCode);
                     if (this.currentCode[1] === this.SB) {
                         // Just keep appending bytes until we
                         // encounter an IAC SE or WILL SE.  (WILL SE
