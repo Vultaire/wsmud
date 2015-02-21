@@ -300,7 +300,6 @@ var Client;
             return this;
         },
         addRawFilter: function (filter) {
-            console.log('Adding filter:', filter);
             this.rawFilters.push(filter);
         },
         connect: function (addr) {

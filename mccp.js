@@ -13,29 +13,17 @@ var MCCPFilter;
 
     // Drop this... make a base class for pulling telnet codes, then
     // specialize for MCCP.
-    MCCPFilter = {
+    MCCPFilter = _.extend(Object.create(TelnetFilter), {
         initialize: function () {
+            TelnetFilter.initialize.call(this);
+            this.serverWillCompress = false;
+            this.serverWillCompress2 = false;
             this.compress = false;
-            this.currentCode = [];
             return this;
         },
-        filter: function (socket, buffer) {
-            var result = [];
-            var i;
-            if (!this.compress) {
-                for (i=0; i<buffer.length; i++) {
-                    var code = buffer[i];
-                    result.push(code);
-                }
-            } else {
-                // Once we get here, we just decompress the data and
-                // spit it through; no further need to inspect each
-                // byte.
-
-                // TO DO
-                throw {name: 'NotImplementedError'};
-            }
-            return result;
+        onCode: function (socket) {
+            console.log('MCCPFilter.onCode:', this.currentCode);
+            return false;
         },
-    };
+    });
 })();
