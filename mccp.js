@@ -10,13 +10,13 @@ var MCCPFilter;
             TelnetFilter.initialize.call(this);
             this.serverWillCompress2 = false;
             this.compress = false;
+            this.inflate = null;
             return this;
         },
         filter: function (socket, buffer) {
             if (this.compress) {
-                // decompress
-                // pass through as-is
-                return buffer;
+                // decompress and pass through as-is
+                return this.inflate.push(buffer);
             } else {
                 return TelnetFilter.filter.call(this, socket, buffer);
             }
@@ -56,7 +56,8 @@ var MCCPFilter;
                 && this.currentCode[4] == this.SE) {
 
                 // MCCP version 2 enabled
-                this.compress = true;
+                console.log('MCCP version 2 enabled');
+                this.enableMCCP();
             } else if (this.currentCode[0] == this.IAC
                 && this.currentCode[1] == this.SB
                 && this.currentCode[2] == this.COMPRESS
@@ -64,11 +65,16 @@ var MCCPFilter;
                 && this.currentCode[4] == this.SE) {
 
                 // MCCP version 1 enabled
-                this.compress = true;
+                console.log('MCCP version 1 enabled');
+                this.enableMCCP();
             } else {
                 return false;
             }
             return true;
+        },
+        enableMCCP: function () {
+            this.compress = true;
+            this.inflate = Inflate.initialize();
         },
     });
 })();
