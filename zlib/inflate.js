@@ -11,6 +11,7 @@ var Inflate;
             this.window = new Uint8Array(0x8000);
             this.windowPointer;
             this.handleDataBlockEnd();
+            this.errorDetected = false;
             return this;
         },
         handleDataBlockEnd: function () {
@@ -23,12 +24,12 @@ var Inflate;
                 console.error('Throwing away remaining bytes:', this.remaining);
             }
             this.remaining = [];
-            this.currentBit = 0;
             // Common stuff for all huffman code handling
             this.literalLengthMap = null;
-            this.distanceMap = null;
+            this.literalLengthMapMaxBits = null;
             // Store current huffman code; do << 1 + bit for each new bit.
             this.currentHuffman = null;
+            this.currentHuffmanBits = null;
 
             // For handling dynamic huffman codes
             this.hlit = null;
@@ -38,12 +39,29 @@ var Inflate;
             this.codeLengthMap = null;
             this.literalLengthCodeLengths = [];
             this.distanceCodeLengths = [];
+            // Distance codes are fixed 5 bit fields with fixed
+            // huffman encoding, but use huffman encoding when using
+            // dynamic huffman codes.
+            this.distanceMap = null;
+            this.distanceMapMaxBits = null;
         },
         push: function (input) {
+            if (this.errorDetected) {
+                // If an error occurs, just spit the output out
+                // unprocessed.  (Not much we can do; we don't know
+                // whether we can correctly detect end of the block or
+                // anything if we encounter errors.)
+                return input;
+            }
             var i;
             var byte;
             var output = [];
             for (i=0; i<input.length; i++) {
+                if (this.errorDetected) {
+                    // Again, if an error occurs, just spit the output
+                    // out unprocessed.
+                    return input.slice(i);
+                }
                 byte = input[i];
                 // zlib section.  Probably should be at the end for
                 // perf reasons, but let's not prematurely
@@ -86,8 +104,7 @@ var Inflate;
                             // Skip remaining bits
                             continue;
                         } else {
-                            this.currentBit = 3;
-                            output = output.concat(this.handleCompressedBits());
+                            output = output.concat(this.handleCompressedBits(3));
                         }
                     } else if (this.blockType === 0) {
                         if (this.len === null) {
@@ -117,14 +134,21 @@ var Inflate;
             }
             return output;
         },
-        handleCompressedBits: function () {
+        handleCompressedBits: function (currentBit) {
             var output = [];
+            if (typeof currentBit === 'undefined') {
+                currentBit = 0;
+            }
 
             if (this.literalLengthMap === null) {
                 if (this.blockType === 1) {
                     this.createFixedHuffmanMaps();
+                    // Next step will be actually reading codes; go
+                    // ahead and reset the current code.
+                    this.resetHuffmanCode();
                 } else {
                     console.error('NOT IMPLEMENTED');
+                    // Don't forget to adjust bits after implementing, if needed.
                 }
                 if (this.literalLengthMap === null) {
                     // Could not yet create the map based upon the
@@ -135,6 +159,7 @@ var Inflate;
             }
             if (this.distanceMap === null && this.blockType === 2) {
                 console.error('NOT IMPLEMENTED');
+                // Don't forget to adjust bits after implementing, if needed.
                 if (this.distanceMap === null) {
                     // Could not yet create the map based upon the
                     // current bits available
@@ -143,9 +168,40 @@ var Inflate;
                 console.log('distance map', this.distanceMap);
             }
 
-            // TO DO: handle data, break out of current block when 256
-            // is found.
-
+            // Handle data, break out of current block when 256 is
+            // found.
+            // NOTE: This works great for static encoding, but may be
+            // problematic when using dynamic encoding.  Think about
+            // this later.
+            var currentByte = this.remaining[this.remaining.length-1];
+            var value;
+            for (; currentBit<8; currentBit++) {
+                this.pushHuffmanBit((currentByte >> currentBit) & 0x1);
+                if (this.literalLengthMap.hasOwnProperty(this.currentHuffman)) {
+                    value = this.literalLengthMap[this.currentHuffman];
+                    console.log('current huffman', this.currentHuffman);
+                    console.log('lit/len map', this.literalLengthMap);
+                    if (value <= 255) {
+                        console.log(sprintf('Detected literal: {} ({})',
+                                            String.fromCharCode(value), value));
+                    }
+                    if (value === 256) {
+                        // End of data block
+                        console.log('Detected end of block');
+                        return output;
+                    }
+                    if (256 < value) {
+                        console.log('Detected special code...', value);
+                    }
+                } else if (this.currentHuffmanBits === this.literalLengthMapMaxBits) {
+                    console.error('Could not extract value based on Huffman code.');
+                    console.error('Current Huffman value:', this.currentHuffman);
+                    console.error('Current Huffman bits:', this.currentHuffmanBits);
+                    console.error('Literal/Length Huffman map:', this.literalLengthMap);
+                    this.errorDetected = true;
+                    return output;
+                }
+            }
 
 
             // NOTES:
@@ -191,7 +247,9 @@ var Inflate;
             for (i=280; i<=287; i++) {
                 lengths.push(8);
             }
-            this.literalLengthMap = this.createMapFromLengths(lengths);
+            var mapAndMax = this.createMapFromLengths(lengths);
+            this.literalLengthMap = mapAndMax[0];
+            this.literalLengthMapMaxBits = mapAndMax[1];
 
             // Distance codes are 0-31.  In the fixed scheme, they're
             // fixed width at 5 bits.  Since we're using a dict rather
@@ -239,11 +297,20 @@ var Inflate;
             for (i=0; i<lengths.length; i++) {
                 len = lengths[i];
                 if (len != 0) {
-                    map[i] = next_code[len];
+                    map[next_code[len]] = i;
                     next_code[len]++;
                 }
             }
-            return map;
+            console.log('THE MAP', map);
+            return [map, MAX_BITS];
+        },
+        resetHuffmanCode: function () {
+            this.currentHuffman = 0;
+            this.currentHuffmanBits = 0;
+        },
+        pushHuffmanBit: function (bit) {
+            this.currentHuffman = (this.currentHuffman << 1) + bit;
+            this.currentHuffmanBits += 1;
         },
     };
 })();
