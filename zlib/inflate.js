@@ -9,7 +9,7 @@ var Inflate;
             // For DEFLATE bytes
             /* Keep track of last 32K bytes for handling back references */
             this.window = new Uint8Array(0x8000);
-            this.windowPointer;
+            this.windowPointer = 0;
             this.handleDataBlockEnd();
             this.errorDetected = false;
             return this;
@@ -27,6 +27,8 @@ var Inflate;
             // Common stuff for all huffman code handling
             this.literalLengthMap = null;
             this.literalLengthMapMaxBits = null;
+            this.distanceMap = null;
+            this.distanceMapMaxBits = null;
             // Store current huffman code; do << 1 + bit for each new bit.
             this.currentHuffman = null;
             this.currentHuffmanBits = null;
@@ -39,11 +41,6 @@ var Inflate;
             this.codeLengthMap = null;
             this.literalLengthCodeLengths = [];
             this.distanceCodeLengths = [];
-            // Distance codes are fixed 5 bit fields with fixed
-            // huffman encoding, but use huffman encoding when using
-            // dynamic huffman codes.
-            this.distanceMap = null;
-            this.distanceMapMaxBits = null;
         },
         push: function (input) {
             if (this.errorDetected) {
@@ -141,7 +138,7 @@ var Inflate;
                     this.createFixedHuffmanMaps();
                     // Next step will be actually reading codes; go
                     // ahead and reset the current code.
-                    this.resetHuffmanCode();
+                    this.currentHuffman = "";
                 } else {
                     console.error('NOT IMPLEMENTED');
                     // Don't forget to adjust bits after implementing, if needed.
@@ -170,31 +167,30 @@ var Inflate;
             // problematic when using dynamic encoding.  Think about
             // this later.
             var currentByte = this.remaining[this.remaining.length-1];
-            var huffmanStr;
             var value;
             for (; currentBit<8; currentBit++) {
-                this.pushHuffmanBit((currentByte >> currentBit) & 0x1);
-                huffmanStr = this.getHuffmanBitString();
-                if (this.literalLengthMap.hasOwnProperty(huffmanStr)) {
-                    value = this.literalLengthMap[huffmanStr];
+                this.currentHuffman += (currentByte >> currentBit) & 0x1;
+                if (this.literalLengthMap.hasOwnProperty(this.currentHuffman)) {
+                    value = this.literalLengthMap[this.currentHuffman];
                     this.resetHuffmanCode();
                     if (value <= 255) {
                         console.log(sprintf('Detected literal: %s (%d)',
                                             String.fromCharCode(value), value));
+                        this.pushWindowByte(value);
                         output.push(value);
                     }
                     if (value === 256) {
-                        // End of data block
+                        // End of data block; discard remaining bits
                         console.log('Detected end of block');
                         return output;
                     }
                     if (256 < value) {
-                        console.log('Detected special code...', value);
+                        console.log('Detected distance code...', value);
+                        // TO DO!
                     }
-                } else if (this.currentHuffmanBits === this.literalLengthMapMaxBits) {
+                } else if (this.currentHuffman.length === this.literalLengthMapMaxBits) {
                     console.error('Could not extract value based on Huffman code.');
                     console.error('Current Huffman value:', this.currentHuffman);
-                    console.error('Current Huffman bits:', this.currentHuffmanBits);
                     console.error('Literal/Length Huffman map:', this.literalLengthMap);
                     this.errorDetected = true;
                     return output;
@@ -224,15 +220,11 @@ var Inflate;
             return output;
         },
         createFixedHuffmanMaps: function () {
-            // For simplicity (and since this is JS rather than C),
-            // using simple JS objects as key/value maps rather than
-            // doing binary trees.
-
-            // Create list of value key lengths.
-            // The values these map back to are implied by list
-            // position.
-            var lengths = [];
+            var lengths;
             var i;
+            var mapAndMax;
+
+            lengths = [];
             for (i=0; i<=143; i++) {
                 lengths.push(8);
             }
@@ -245,19 +237,17 @@ var Inflate;
             for (i=280; i<=287; i++) {
                 lengths.push(8);
             }
-            var mapAndMax = this.createMapFromLengths(lengths);
+            mapAndMax = this.createMapFromLengths(lengths);
             this.literalLengthMap = mapAndMax[0];
             this.literalLengthMapMaxBits = mapAndMax[1];
 
-            // Distance codes are 0-31.  In the fixed scheme, they're
-            // fixed width at 5 bits.  Since we're using a dict rather
-            // than a tree, a simple mapping of values will break
-            // unless we can explicitly express that, e.g., there must
-            // be 4 leading zeroes before a 1 bit.
-            //
-            // So...  We'll leave the distanceMap as
-            // null, and if we are in fixed mode, we'll just
-            // explicitly pull 5 bits.
+            lengths = [];
+            for (i=0; i<=31; i++) {
+                lengths.push(5);
+            }
+            mapAndMax = this.createMapFromLengths(lengths);
+            this.distanceMap = mapAndMax[0];
+            this.distanceMapMaxBits = mapAndMax[1];
         },
         createMapFromLengths: function (lengths) {
             var map = {};
@@ -318,16 +308,18 @@ var Inflate;
             }
             return [map, MAX_BITS];
         },
-        resetHuffmanCode: function () {
-            this.currentHuffman = 0;
-            this.currentHuffmanBits = 0;
+        pushWindowByte: function (byte) {
+            this.window[this.windowPointer] = byte;
+            this.windowPointer = (this.windowPointer + 1) % 0x10000;
         },
-        getHuffmanBitString: function () {
-            return sprintf('%0' + this.currentHuffmanBits + 'b', this.currentHuffman);
-        },
-        pushHuffmanBit: function (bit) {
-            this.currentHuffman = (this.currentHuffman << 1) + bit;
-            this.currentHuffmanBits += 1;
+        getPastBytes: function (length, distance) {
+            var result = [];
+            var pastPointer = (this.windowPointer + 0x10000 - distance) % 0x10000;
+            for (var i=0; i<length; i++) {
+                result.push(this.window[pastPointer]);
+                pastPointer = (pastPointer + 1) % 0x10000;
+            }
+            return result;
         },
     };
 })();
