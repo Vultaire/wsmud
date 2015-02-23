@@ -93,7 +93,7 @@ var Inflate;
                     // Reason: now we're getting down to bitwise
                     // schtuff...  Likely stuff will be optimizable,
                     // but for now, just doing it will be hard enough.
-                    console.log('DEFLATE byte:', byte);
+                    //console.log('DEFLATE byte:', byte);
                     this.remaining.push(byte);
                     if (this.blockType === null) {
                         // Beginning of a new data block.
@@ -127,10 +127,6 @@ var Inflate;
                         output = output.concat(this.handleCompressedBits());
                     }
                 }
-                // FOR NOW: just push the compressed byte as-is.
-                // (This is debug code; I don't mind if we dupe stuff.
-                // It'll eventually be removed.)
-                output.push(byte);
             }
             return output;
         },
@@ -155,7 +151,7 @@ var Inflate;
                     // current bits available
                     return output;
                 }
-                console.log('literal/length map', this.literalLengthMap);
+                //console.log('literal/length map', this.literalLengthMap);
             }
             if (this.distanceMap === null && this.blockType === 2) {
                 console.error('NOT IMPLEMENTED');
@@ -174,16 +170,18 @@ var Inflate;
             // problematic when using dynamic encoding.  Think about
             // this later.
             var currentByte = this.remaining[this.remaining.length-1];
+            var huffmanStr;
             var value;
             for (; currentBit<8; currentBit++) {
                 this.pushHuffmanBit((currentByte >> currentBit) & 0x1);
-                if (this.literalLengthMap.hasOwnProperty(this.currentHuffman)) {
-                    value = this.literalLengthMap[this.currentHuffman];
-                    console.log('current huffman', this.currentHuffman);
-                    console.log('lit/len map', this.literalLengthMap);
+                huffmanStr = this.getHuffmanBitString();
+                if (this.literalLengthMap.hasOwnProperty(huffmanStr)) {
+                    value = this.literalLengthMap[huffmanStr];
+                    this.resetHuffmanCode();
                     if (value <= 255) {
-                        console.log(sprintf('Detected literal: {} ({})',
+                        console.log(sprintf('Detected literal: %s (%d)',
                                             String.fromCharCode(value), value));
+                        output.push(value);
                     }
                     if (value === 256) {
                         // End of data block
@@ -265,6 +263,22 @@ var Inflate;
             var map = {};
             // using RFC 1951 names for some of these variables.
 
+            /*
+              ACK; I was mistaken.  Huffman codes are truly being
+              generated in a binary tree fashion, where e.g. 011 is
+              clearly distinct from 11.
+
+              Alternate methodologies:
+
+              - Use nested {0: ..., 1:...} objects to literally
+                represent a tree.
+
+              - Convert the ints to strings, and use the bit sequence
+                converted to a string as the key.
+
+              I'm going to try the latter.
+             */
+
             // Step 1: "Count the number of codes for each code length."
             var bl_count = {};
             var i;
@@ -293,20 +307,23 @@ var Inflate;
             }
 
             // Step 3: Here we actually create the map.
-            var len;
+            var len, huffman;
             for (i=0; i<lengths.length; i++) {
                 len = lengths[i];
                 if (len != 0) {
-                    map[next_code[len]] = i;
+                    huffman = sprintf('%0' + len + 'b', next_code[len]);
+                    map[huffman] = i;
                     next_code[len]++;
                 }
             }
-            console.log('THE MAP', map);
             return [map, MAX_BITS];
         },
         resetHuffmanCode: function () {
             this.currentHuffman = 0;
             this.currentHuffmanBits = 0;
+        },
+        getHuffmanBitString: function () {
+            return sprintf('%0' + this.currentHuffmanBits + 'b', this.currentHuffman);
         },
         pushHuffmanBit: function (bit) {
             this.currentHuffman = (this.currentHuffman << 1) + bit;
