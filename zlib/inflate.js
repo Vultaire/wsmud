@@ -1,5 +1,23 @@
 var Inflate;
 
+/*
+
+  Devil is in the details:
+
+  "Note that the header bits do not necessarily begin on a byte
+  boundary, since a block does not necessarily occupy an integral
+  number of bytes."
+
+  So, basically: the entire inflate stream needs to be read
+  bit-by-bit.
+
+  Rework required since I assumed blocks would begin on a byte
+  boundary.  Seems the only time bits are thrown away is when a
+  noncompressed block is encountered.  Anyway, will do the rewrite
+  another night.
+
+ */
+
 (function () {
     Inflate = {
         initialize: function () {
@@ -230,9 +248,9 @@ var Inflate;
             // If using dynamic: ...well, we could always error out
             // for now ;)
             // But really:
-            // Pull 5 bits into hlit
-            // Pull 5 bits into hdist
-            // Pull 4 bits into hclen
+            // Pull 5 bits into hlit.  (Assert that hlit is 29; not sure of behavior otherwise.)
+            // Pull 5 bits into hdist.  (Assert that hdist is 31; not sure of behavior otherwise.)
+            // Pull 4 bits into hclen.  (Assert that hclen is 15; not sure of behavior otherwise.)
             // Pull (hclen+4)*3 bits as code lengths, compute code length huffman codes
             // Pull hlit+257 code length huffman codes, compute literal/length huffman codes
             // Pull hdist+1 code length huffman codes, compute distance huffman codes
