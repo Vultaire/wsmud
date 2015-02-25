@@ -14,12 +14,16 @@ var MCCPFilter;
             return this;
         },
         filter: function (socket, buffer) {
+            var result;
             if (this.compress) {
                 // decompress and pass through as-is
-                return this.inflate.push(buffer);
+                var result = this.inflate.push(buffer);
+                console.log('inflate result:', result);
             } else {
-                return TelnetFilter.filter.call(this, socket, buffer);
+                result = TelnetFilter.filter.call(this, socket, buffer);
+                console.log('TelnetFilter result:', result);
             }
+            return result;
         },
         onCode: function (socket) {
             if (this.currentCode[0] == this.IAC

@@ -15,23 +15,29 @@ var Inflate;
             return this;
         },
         handleDataBlockEnd: function () {
+            // Reset any state from the previous data block.
             this.blockFinal = null;
             this.blockType = null;
             this.len = null;
             this.nlen = null;
             /* Keep track of any incomplete bits which can't yet be decompressed */
             if (this.remaining && this.remaining.length > 0) {
-                console.error('Throwing away remaining bytes:', this.remaining);
+                console.info('Throwing away remaining bytes:', this.remaining);
             }
             this.remaining = [];
+
+            // Bit gathering stuff
+            this.onNewBit = null;
+            this.currentBits = [];
+
             // Common stuff for all huffman code handling
+            this.currentLengthValue = null;  // as pulled from huffman code, not the actual length
+            this.currentLength = null;
+            this.currentDistance = null;  // Not *really* needed, but used for consistency.
             this.literalLengthMap = null;
             this.literalLengthMapMaxBits = null;
             this.distanceMap = null;
             this.distanceMapMaxBits = null;
-            // Store current huffman code; do << 1 + bit for each new bit.
-            this.currentHuffman = null;
-            this.currentHuffmanBits = null;
 
             // For handling dynamic huffman codes
             this.hlit = null;
@@ -91,8 +97,8 @@ var Inflate;
                     // schtuff...  Likely stuff will be optimizable,
                     // but for now, just doing it will be hard enough.
                     //console.log('DEFLATE byte:', byte);
-                    this.remaining.push(byte);
                     if (this.blockType === null) {
+                        this.remaining.push(byte);
                         // Beginning of a new data block.
                         this.blockFinal = byte & 0x1;
                         this.blockType = (byte>1) & 0x3;
@@ -101,9 +107,10 @@ var Inflate;
                             // Skip remaining bits
                             continue;
                         } else {
-                            output = output.concat(this.handleCompressedBits(3));
+                            output = output.concat(this.handleCompressedBits(byte, 3));
                         }
                     } else if (this.blockType === 0) {
+                        this.remaining.push(byte);
                         if (this.len === null) {
                             if (this.remaining.length === 4) {
                                 this.len = this.remaining[0] + (this.remaining[1] << 8);
@@ -121,27 +128,34 @@ var Inflate;
                             }
                         }
                     } else {
-                        output = output.concat(this.handleCompressedBits());
+                        output = output.concat(this.handleCompressedBits(byte));
                     }
                 }
             }
             return output;
         },
-        handleCompressedBits: function (currentBit) {
+        handleCompressedBits: function (currentByte, currentBit) {
             var output = [];
             if (typeof currentBit === 'undefined') {
                 currentBit = 0;
             }
 
+            // May be good to rework this first bit to use the new bit
+            // push loop as well...  Maybe later.
+
             if (this.literalLengthMap === null) {
                 if (this.blockType === 1) {
                     this.createFixedHuffmanMaps();
-                    // Next step will be actually reading codes; go
-                    // ahead and reset the current code.
-                    this.currentHuffman = "";
+
+                    // Next step will be actually reading codes;
+                    // transition to the appropriate parsers.
+                    this.transitionBitParser(
+                        this.getHuffmanFunction(
+                            this.literalLengthMap, this.literalLengthMapMaxBits),
+                        this.onLiteralLength.bind(this)
+                    );
                 } else {
-                    console.error('NOT IMPLEMENTED');
-                    // Don't forget to adjust bits after implementing, if needed.
+                    throw {name: 'NotImplementedError'};
                 }
                 if (this.literalLengthMap === null) {
                     // Could not yet create the map based upon the
@@ -151,14 +165,23 @@ var Inflate;
                 //console.log('literal/length map', this.literalLengthMap);
             }
             if (this.distanceMap === null && this.blockType === 2) {
-                console.error('NOT IMPLEMENTED');
+                throw {name: 'NotImplementedError'};
+
                 // Don't forget to adjust bits after implementing, if needed.
                 if (this.distanceMap === null) {
                     // Could not yet create the map based upon the
                     // current bits available
                     return output;
                 }
-                console.log('distance map', this.distanceMap);
+                //console.log('distance map', this.distanceMap);
+
+                // Next step will be actually reading codes;
+                // transition to the appropriate parsers.
+                this.transitionBitParser(
+                    this.getHuffmanFunction(
+                        this.literalLengthMap, this.literalLengthMapMaxBits),
+                    this.onLiteralLength.bind(this)
+                );
             }
 
             // Handle data, break out of current block when 256 is
@@ -166,37 +189,41 @@ var Inflate;
             // NOTE: This works great for static encoding, but may be
             // problematic when using dynamic encoding.  Think about
             // this later.
-            var currentByte = this.remaining[this.remaining.length-1];
             var value;
+            var outputChunk;
+            var currentBitValue;
             for (; currentBit<8; currentBit++) {
-                this.currentHuffman += (currentByte >> currentBit) & 0x1;
-                if (this.literalLengthMap.hasOwnProperty(this.currentHuffman)) {
-                    value = this.literalLengthMap[this.currentHuffman];
-                    this.resetHuffmanCode();
-                    if (value <= 255) {
-                        console.log(sprintf('Detected literal: %s (%d)',
-                                            String.fromCharCode(value), value));
-                        this.pushWindowByte(value);
-                        output.push(value);
-                    }
-                    if (value === 256) {
-                        // End of data block; discard remaining bits
-                        console.log('Detected end of block');
-                        return output;
-                    }
-                    if (256 < value) {
-                        console.log('Detected distance code...', value);
-                        // TO DO!
-                    }
-                } else if (this.currentHuffman.length === this.literalLengthMapMaxBits) {
-                    console.error('Could not extract value based on Huffman code.');
-                    console.error('Current Huffman value:', this.currentHuffman);
-                    console.error('Literal/Length Huffman map:', this.literalLengthMap);
+                currentBitValue = (currentByte >> currentBit) & 0x1;
+                this.currentBits.push(currentBitValue);
+                try {
+                    value = this.onNewBit();
+                } catch (e) {
+                    console.error(e);
                     this.errorDetected = true;
                     return output;
                 }
-            }
+                if (value !== null) {
+                    try {
+                        outputChunk = this.onValue(value);
+                    } catch (e) {
+                        if (e.name === 'EndOfBlock') {
+                            console.log('Detected end of block');
+                            this.handleDataBlockEnd();
+                        } else {
+                            console.error(e);
+                            this.errorDetected = true;
+                        }
+                        // Discard any remaining bits and return
+                        // current output.
+                        return output;
+                    }
 
+                    if (outputChunk) {
+                        this.pushWindowBytes(outputChunk);
+                        output = output.concat(outputChunk);
+                    }
+                }
+            }
 
             // NOTES:
 
@@ -312,6 +339,9 @@ var Inflate;
             this.window[this.windowPointer] = byte;
             this.windowPointer = (this.windowPointer + 1) % 0x10000;
         },
+        pushWindowBytes: function (bytes) {
+            bytes.forEach(this.pushWindowByte.bind(this));
+        },
         getPastBytes: function (length, distance) {
             var result = [];
             var pastPointer = (this.windowPointer + 0x10000 - distance) % 0x10000;
@@ -321,5 +351,146 @@ var Inflate;
             }
             return result;
         },
+        computeBitsValue: function (bits) {
+            var bitsVal = 0;
+            for (var i=0; i<bits.length; i++) {
+                bitsVal = (bitsVal << 1) + bits[i];
+            }
+            return bitsVal;
+        },
+        getHuffmanFunction: function (map, maxBits) {
+            var that = this;
+            return function () {
+                var huffman = '';
+                that.currentBits.forEach(function (bit) {
+                    huffman += bit;
+                });
+                if (map.hasOwnProperty(huffman)) {
+                    return map[huffman];
+                } else if (that.currentBits.length === maxBits) {
+                    throw {
+                        name: 'ValueError',
+                        message: 'Could not extract value based on Huffman code',
+                    };
+                } else {
+                    return null;
+                }
+            };
+        },
+        getBitsFunction: function (bits) {
+            var that = this;
+            return function () {
+                if (that.currentBits.length === bits) {
+                    return that.computeBitsValue(that.currentBits);
+                }
+                return null;
+            };
+        },
+        onLiteralLength: function (value) {
+            if (value <= 255) {
+                console.log(sprintf('Detected literal: %s (%d)',
+                                    String.fromCharCode(value), value));
+                // Keep same parser, just reset the bits
+                this.currentBits = [];
+                return [value];
+            } else if (value === 256) {
+                throw {name: 'EndOfBlock'};
+            } else {
+                if (257 <= value && value <= 264) {
+                    this.currentLength = value - 254;
+                    this.transitionBitParser(
+                        this.getHuffmanFunction(
+                            this.distanceMap, this.distanceMapMaxBits),
+                        this.onDistance.bind(this)
+                    );
+                } else if (value === 285) {
+                    this.currentLength = 258;
+                    this.currentBits = [];
+                    this.transitionBitParser(
+                        this.getHuffmanFunction(
+                            this.distanceMap, this.distanceMapMaxBits),
+                        this.onDistance.bind(this)
+                    );
+                } else {
+                    this.currentLengthValue = value;
+                    var bitsNeeded = Math.floor((value - 261) / 4);
+                    this.transitionBitParser(
+                        this.getBitsFunction(bitsNeeded),
+                        this.onLengthBits.bind(this)
+                    );
+                }
+                return null;
+            }
+        },
+        onLengthBits: function (value) {
+            this.currentLength = this.baseLengthMap[this.currentLengthValue] + value;
+            this.transitionBitParser(
+                this.getHuffmanFunction(
+                    this.distanceMap, this.distanceMapMaxBits),
+                this.onDistance.bind(this)
+            );
+        },
+        onDistance: function (value) {
+            if (value <= 3) {
+                this.currentDistance = value + 1;
+                output = this.getPastBytes(this.currentLength, this.currentDistance);
+                this.transitionBitParser(
+                    this.getHuffmanFunction(
+                        this.literalLengthMap, this.literalLengthMapMaxBits),
+                    this.onLiteralLength.bind(this)
+                );
+                console.log('Returning past bytes', output);
+                return output;
+            } else {
+                // bits needed
+                this.currentDistanceValue = value;
+                var bitsNeeded = Math.floor((value - 2) / 2);
+                this.transitionBitParser(
+                    this.getBitsFunction(bitsNeeded),
+                    this.onDistanceBits.bind(this)
+                );
+                return null;
+            }
+        },
+        onDistanceBits: function (value) {
+            this.currentDistance = this.baseDistanceMap[this.currentDistanceValue] + value;
+            output = this.getPastBytes(this.currentLength, this.currentDistance);
+            this.transitionBitParser(
+                this.getHuffmanFunction(
+                    this.literalLengthMap, this.literalLengthMapMaxBits),
+                this.onLiteralLength.bind(this)
+            );
+            console.log('Returning past bytes', output);
+            return output;
+        },
+        transitionBitParser: function (onNewBit, onValue) {
+            this.currentBits = [];
+            this.onNewBit = onNewBit;
+            this.onValue = onValue;
+        },
     };
+
+    // Avoid errors in transposing from the RFCs: programatically
+    // generate the value-length and value-distance lookup tables.
+
+    var i, extraBits;
+    Inflate.baseLengthMap = {};
+    Inflate.baseLengthMap[256] = 2;  // Just for calculation purposes
+    for (i=257; i<=284; i++) {
+        extraBits = Math.max(Math.floor(((i-1)-261) / 4), 0);
+        Inflate.baseLengthMap[i] = (
+            Inflate.baseLengthMap[i-1] + Math.pow(2, extraBits)
+        );
+    }
+    delete Inflate.baseLengthMap[256];
+    Inflate.baseLengthMap[285] = 258;
+
+    Inflate.baseDistanceMap = {};
+    Inflate.baseDistanceMap[-1] = 0;  // Just for calculation purposes
+    for (i=0; i<=29; i++) {
+        extraBits = Math.max(Math.floor(((i-1)-2) / 2), 0);
+        Inflate.baseDistanceMap[i] = Inflate.baseDistanceMap[i-1] + Math.pow(2, extraBits);
+    }
+    delete Inflate.baseDistanceMap[-1];
+
 })();
