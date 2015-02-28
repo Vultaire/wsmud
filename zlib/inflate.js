@@ -19,6 +19,10 @@ var Inflate;
  */
 
 (function () {
+    var isSet = function (val) {
+        return (val !== null && typeof val !== 'undefined');
+    };
+
     Inflate = {
         initialize: function () {
             // For zlib frame bytes
@@ -30,23 +34,32 @@ var Inflate;
             this.windowPointer = 0;
             this.handleDataBlockEnd();
             this.errorDetected = false;
+            this.onByte = this.handleZlibByte;
             return this;
         },
         handleDataBlockEnd: function () {
+            console.log('Resetting for new data block');
             // Reset any state from the previous data block.
             this.blockFinal = null;
             this.blockType = null;
-            this.len = null;
-            this.nlen = null;
-            /* Keep track of any incomplete bits which can't yet be decompressed */
-            if (this.remaining && this.remaining.length > 0) {
-                console.info('Throwing away remaining bytes:', this.remaining);
-            }
-            this.remaining = [];
 
             // Bit gathering stuff
-            this.onNewBit = null;
             this.currentBits = [];
+            // getValue is called each time a bit is added; it returns
+            // null unless a valid value is detected, then it returns
+            // that value.
+            this.getValue = this.getBlockType;
+            // onValue handles the value extracted via getValue.  This
+            // also is where these two functions tend to get
+            // reassigned (in other words, when state machine
+            // "transitions" occur).
+            this.onValue = this.onBlockType;
+
+            // For uncompressed blocks
+            this.len = null;
+            this.nlen = null;
+            this.sizeBytes = [];
+            this.bytesRead = 0;
 
             // Common stuff for all huffman code handling
             this.currentLengthValue = null;  // as pulled from huffman code, not the actual length
@@ -58,9 +71,9 @@ var Inflate;
             this.distanceMapMaxBits = null;
 
             // For handling dynamic huffman codes
-            this.hlit = null;
-            this.hdist = null;
-            this.hclen = null;
+            this.hlit = 0;
+            this.hdist = 0;
+            this.hclen = 0;
             this.codeLengthCodeLengths = [];
             this.codeLengthMap = null;
             this.literalLengthCodeLengths = [];
@@ -77,192 +90,182 @@ var Inflate;
             var i;
             var byte;
             var output = [];
+            var onByteResult;
             for (i=0; i<input.length; i++) {
                 if (this.errorDetected) {
                     // Again, if an error occurs, just spit the output
                     // out unprocessed.
-                    return input.slice(i);
+                    return Array.prototype.slice.call(input, i);
                 }
                 byte = input[i];
-                // zlib section.  Probably should be at the end for
-                // perf reasons, but let's not prematurely
-                // optimize. :)
-                if (this.zlibBytes.length === 0) {
-                    // CMF byte
-                    console.log(sprintf(
-                        'zlib CMF byte: CM: %d, CINFO: %d',
-                        byte & 0xf, (byte>>4) & 0xf
-                    ));
-                    this.zlibBytes.push(byte);
-                } else if (this.zlibBytes.length === 1) {
-                    // FLG byte
-                    console.log(sprintf(
-                        'zlib FLG byte: FCHECK: %d, FDICT: %d, FLEVEL: %d',
-                        byte & 0x1f, (byte>>5) & 0x1, (byte>>6) & 0x3
-                    ));
-                    this.zlibFdict = (byte>>5) & 0x1;
-                    this.zlibBytes.push(byte);
-                } else if (this.zlibFdict && this.zlibBytes.length < 6) {
-                    // Read the next 4 bytes as zlib bytes... although
-                    // we'll ignore them.
-                    if (this.zlibBytes.length == 2) {
-                        console.error('Unexpected: zlib fdict flag is true');
+                try {
+                    onByteResult = this.onByte(byte);
+                    if (onByteResult && (0 < onByteResult.length)) {
+                        console.log('onByte result:', onByteResult);
+                        output = output.concat(onByteResult);
                     }
-                    this.zlibBytes.push(byte);
-                } else {
-                    // Now we're into the DEFLATE section.  Let the craziness ensue!
-                    // Reason: now we're getting down to bitwise
-                    // schtuff...  Likely stuff will be optimizable,
-                    // but for now, just doing it will be hard enough.
-                    //console.log('DEFLATE byte:', byte);
-                    if (this.blockType === null) {
-                        this.remaining.push(byte);
-                        // Beginning of a new data block.
-                        this.blockFinal = byte & 0x1;
-                        this.blockType = (byte>1) & 0x3;
-                        console.log(sprintf('New data block: type: %d, final: %d', this.blockType, this.blockFinal));
-                        if (this.blockType === 0) {
-                            // Skip remaining bits
-                            continue;
-                        } else {
-                            output = output.concat(this.handleCompressedBits(byte, 3));
-                        }
-                    } else if (this.blockType === 0) {
-                        this.remaining.push(byte);
-                        if (this.len === null) {
-                            if (this.remaining.length === 4) {
-                                this.len = this.remaining[0] + (this.remaining[1] << 8);
-                                this.nlen = this.remaining[2] + (this.remaining[3] << 8);
-                                // TO DO: len/nlen one's complement check.
-                                // (Not strictly needed for our purposes I
-                                // think.)
-                                this.remaining = [];
-                            }
-                        } else {
-                            // Literal data: push to output
-                            output.push(byte);
-                            if (this.remaining.length === this.len) {
-                                this.handleDataBlockEnd();
-                            }
-                        }
-                    } else {
-                        output = output.concat(this.handleCompressedBits(byte));
-                    }
+                } catch (e) {
+                    this.error(e);
                 }
             }
             return output;
         },
-        handleCompressedBits: function (currentByte, currentBit) {
-            var output = [];
-            if (typeof currentBit === 'undefined') {
-                currentBit = 0;
-            }
-
-            // May be good to rework this first bit to use the new bit
-            // push loop as well...  Maybe later.
-
-            if (this.literalLengthMap === null) {
-                if (this.blockType === 1) {
-                    this.createFixedHuffmanMaps();
-
-                    // Next step will be actually reading codes;
-                    // transition to the appropriate parsers.
-                    this.transitionBitParser(
-                        this.getHuffmanFunction(
-                            this.literalLengthMap, this.literalLengthMapMaxBits),
-                        this.onLiteralLength.bind(this)
-                    );
+        handleZlibByte: function (byte) {
+            this.zlibBytes.push(byte);
+            if (this.zlibBytes.length === 1) {
+                // Current byte is CMF
+                console.log(sprintf(
+                    'zlib CMF byte: CM: %d, CINFO: %d',
+                    byte & 0xf, (byte>>4) & 0xf
+                ));
+            } else if (this.zlibBytes.length === 2) {
+                // Current byte is FLG
+                console.log(sprintf(
+                    'zlib FLG byte: FCHECK: %d, FDICT: %d, FLEVEL: %d',
+                    byte & 0x1f, (byte>>5) & 0x1, (byte>>6) & 0x3
+                ));
+                this.zlibFdict = (byte>>5) & 0x1;
+                // If FDICT is false, transition to the DEFLATE
+                // stream.
+                if (!this.zlibFdict) {
+                    this.onByte = this.handleDeflateBits;
+                    // No further setup needed; the other state
+                    // variables should already be ready for the first
+                    // data block.
                 } else {
-                    throw {name: 'NotImplementedError'};
+                    console.error('Unexpected: zlib fdict flag is true');
                 }
-                if (this.literalLengthMap === null) {
-                    // Could not yet create the map based upon the
-                    // current bits available
-                    return output;
-                }
-                //console.log('literal/length map', this.literalLengthMap);
+            } else if (this.zlibFdict && this.zlibBytes.length == 6) {
+                // The final 4 bytes, if present, are for the fdict
+                // hash if I recall right.  We'll just ignore them,
+                // then transition to the DEFLATE stream.
+                this.onByte = this.handleDeflateBits;
+                // No further setup needed; the other state variables
+                // should already be ready for the first data block.
+            } else {
+                throw {name: 'RuntimeError', message: 'Should never get here'};
             }
-            if (this.distanceMap === null && this.blockType === 2) {
-                throw {name: 'NotImplementedError'};
-
-                // Don't forget to adjust bits after implementing, if needed.
-                if (this.distanceMap === null) {
-                    // Could not yet create the map based upon the
-                    // current bits available
-                    return output;
-                }
-                //console.log('distance map', this.distanceMap);
-
-                // Next step will be actually reading codes;
-                // transition to the appropriate parsers.
-                this.transitionBitParser(
-                    this.getHuffmanFunction(
-                        this.literalLengthMap, this.literalLengthMapMaxBits),
-                    this.onLiteralLength.bind(this)
-                );
-            }
-
-            // Handle data, break out of current block when 256 is
-            // found.
-            // NOTE: This works great for static encoding, but may be
-            // problematic when using dynamic encoding.  Think about
-            // this later.
-            var value;
-            var outputChunk;
+        },
+        handleDeflateBits: function (byte) {
+            var output = [];
             var currentBitValue;
-            for (; currentBit<8; currentBit++) {
-                currentBitValue = (currentByte >> currentBit) & 0x1;
+            var extractedValue;
+            var outputChunk;
+            for (var currentBit=0; currentBit<8; currentBit++) {
+                currentBitValue = (byte >> currentBit) & 0x1;
                 this.currentBits.push(currentBitValue);
                 try {
-                    value = this.onNewBit();
+                    extractedValue = this.getValue();
                 } catch (e) {
-                    console.error(e);
-                    this.errorDetected = true;
+                    this.error(e);
                     return output;
                 }
-                if (value !== null) {
+                if (isSet(extractedValue)) {
                     try {
-                        outputChunk = this.onValue(value);
+                        console.log('Value detected; current bits:', this.currentBits,
+                                    'value:', extractedValue)
+                        outputChunk = this.onValue(extractedValue);
                     } catch (e) {
-                        if (e.name === 'EndOfBlock') {
-                            console.log('Detected end of block');
-                            this.handleDataBlockEnd();
+                        if (e.name === 'SkipRemainingBits') {
+                            break;
                         } else {
-                            console.error(e);
-                            this.errorDetected = true;
+                            this.error(e);
                         }
                         // Discard any remaining bits and return
                         // current output.
                         return output;
                     }
 
-                    if (outputChunk) {
+                    if (outputChunk && (0 < outputChunk.length)) {
                         this.pushWindowBytes(outputChunk);
                         output = output.concat(outputChunk);
                     }
                 }
             }
-
-            // NOTES:
-
-            // If using dynamic: ...well, we could always error out
-            // for now ;)
-            // But really:
-            // Pull 5 bits into hlit.  (Assert that hlit is 29; not sure of behavior otherwise.)
-            // Pull 5 bits into hdist.  (Assert that hdist is 31; not sure of behavior otherwise.)
-            // Pull 4 bits into hclen.  (Assert that hclen is 15; not sure of behavior otherwise.)
-            // Pull (hclen+4)*3 bits as code lengths, compute code length huffman codes
-            // Pull hlit+257 code length huffman codes, compute literal/length huffman codes
-            // Pull hdist+1 code length huffman codes, compute distance huffman codes
-            // FINALLY: start handling the data
-            // End of block when 256 is pulled
-
-            // If using static:
-            // Auto-compute the huffman codes
-            // Start handling the data
-            // End of block when 256 is pulled
-
             return output;
+        },
+        getBlockType: function () {
+            var blockType;
+            if (this.currentBits.length === 3) {
+                this.blockFinal = this.currentBits[0];
+                blockType = this.currentBits[1] + (this.currentBits[2] << 1);
+                if (0 <= blockType && blockType <= 2) {
+                    return blockType;
+                } else {
+                    this.error('Unexpected block type', blockType);
+                }
+            }
+        },
+        onBlockType: function (value) {
+            if (value === 0) {
+                this.sizeBytes = [];
+                this.onByte = this.handleDeflateUncompressedSize;
+                throw {name: 'SkipRemainingBits'};
+            } else if (value === 1) {
+                // Static huffman codes: create fixed maps, then start
+                // parsing compressed data.
+                this.createFixedHuffmanMaps();
+                this.transitionBitParser(
+                    this.getHuffmanFunction(
+                        this.literalLengthMap, this.literalLengthMapMaxBits),
+                    this.onLiteralLength.bind(this)
+                );
+            } else if (value === 2) {
+                // Dynamic huffman codes: work to be done here.
+                this.transitionBitParser(
+                    this.getBitsFunctionLE(14),
+                    this.onDynamicHuffmanFirst14Bits.bind(this)
+                );
+            } else {
+                this.error("shouldn't get here", value);
+            }
+        },
+        handleDeflateUncompressedSize: function (byte) {
+            this.sizeBytes.push(byte);
+            if (this.sizeBytes.length === 4) {
+                this.len = this.sizeBytes[0] + (this.sizeBytes[1] << 8);
+                this.nlen = this.sizeBytes[2] + (this.sizeBytes[3] << 8);
+                if (this.len ^ 0xFFFF !== this.nlen) {
+                    console.error('Length mismatch: len:', this.len, 'nlen:', this.nlen);
+                }
+                if (0 < this.len) {
+                    console.log('upcoming uncompressed bytes, count:', this.len);
+                    this.onByte = this.handleDeflateUncompressedBytes;
+                } else {
+                    // I didn't expect this would happen, but if my
+                    // parser is working right, I'm definitely seeing
+                    // it.  Will check len vs nlen to make sure.
+                    console.log('Zero bytes in uncompressed block; resetting to next data block.');
+                    this.onByte = this.handleDeflateBits;
+                    this.handleDataBlockEnd();
+                }
+            }
+        },
+        handleDeflateUncompressedBytes: function (byte) {
+            this.bytesRead += 1;
+            this.pushWindowByte(byte);
+            if (this.bytesRead === this.len) {
+                this.onByte = this.handleDeflateBits;
+                this.handleDataBlockEnd();
+            }
+            return [byte];
+        },
+        onDynamicHuffmanFirst14Bits: function (value) {
+            var this.hlit = value & 0x1f;
+            var this.hdist = (value >> 5) & 0x1f;
+            var this.hclen = (value >> 10) & 0xf;
+            console.log('Dynamic huffman first 3 fields:',
+                        this.hlit, this.hdist, this.hclen);
+            this.error('Unimplemented and stuff; erroring out');
+            // Reminder of order of code length alphabet encodings:
+            // 16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2,
+            // 14, 1, 15
+
+            // Getting hlit of 14, hdist of 18, hclen of 12.
+            // Maps to 271 lit/length codes, 19 hdist codes and 16
+            // code length codes.
+
+            // I wonder if I am making some sort of parsing mistake...
         },
         createFixedHuffmanMaps: function () {
             var lengths;
@@ -369,9 +372,18 @@ var Inflate;
             }
             return result;
         },
-        computeBitsValue: function (bits) {
+        computeBitsValueBE: function (bits) {
+            // Computes bits in big endian order (MSB first)
             var bitsVal = 0;
             for (var i=0; i<bits.length; i++) {
+                bitsVal = (bitsVal << 1) + bits[i];
+            }
+            return bitsVal;
+        },
+        computeBitsValueLE: function (bits) {
+            // Computes bits in little endian order (MSB last)
+            var bitsVal = 0;
+            for (var i=bits.length-1; 0<=i; i--) {
                 bitsVal = (bitsVal << 1) + bits[i];
             }
             return bitsVal;
@@ -395,11 +407,20 @@ var Inflate;
                 }
             };
         },
-        getBitsFunction: function (bits) {
+        getBitsFunctionBE: function (bits) {
             var that = this;
             return function () {
                 if (that.currentBits.length === bits) {
-                    return that.computeBitsValue(that.currentBits);
+                    return that.computeBitsValueBE(that.currentBits);
+                }
+                return null;
+            };
+        },
+        getBitsFunctionLE: function (bits) {
+            var that = this;
+            return function () {
+                if (that.currentBits.length === bits) {
+                    return that.computeBitsValueLE(that.currentBits);
                 }
                 return null;
             };
@@ -412,7 +433,7 @@ var Inflate;
                 this.currentBits = [];
                 return [value];
             } else if (value === 256) {
-                throw {name: 'EndOfBlock'};
+                this.handleDataBlockEnd();
             } else {
                 if (257 <= value && value <= 264) {
                     this.currentLength = value - 254;
@@ -433,7 +454,7 @@ var Inflate;
                     this.currentLengthValue = value;
                     var bitsNeeded = Math.floor((value - 261) / 4);
                     this.transitionBitParser(
-                        this.getBitsFunction(bitsNeeded),
+                        this.getBitsFunctionBE(bitsNeeded),
                         this.onLengthBits.bind(this)
                     );
                 }
@@ -464,7 +485,7 @@ var Inflate;
                 this.currentDistanceValue = value;
                 var bitsNeeded = Math.floor((value - 2) / 2);
                 this.transitionBitParser(
-                    this.getBitsFunction(bitsNeeded),
+                    this.getBitsFunctionBE(bitsNeeded),
                     this.onDistanceBits.bind(this)
                 );
                 return null;
@@ -481,10 +502,14 @@ var Inflate;
             console.log('Returning past bytes', output);
             return output;
         },
-        transitionBitParser: function (onNewBit, onValue) {
+        transitionBitParser: function (getValue, onValue) {
             this.currentBits = [];
-            this.onNewBit = onNewBit;
+            this.getValue = getValue;
             this.onValue = onValue;
+        },
+        error: function () {
+            this.errorDetected = true;
+            console.error.apply(console, arguments);
         },
     };
 
