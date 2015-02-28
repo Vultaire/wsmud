@@ -261,11 +261,21 @@ var Inflate;
             // 16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2,
             // 14, 1, 15
 
-            // Getting hlit of 14, hdist of 18, hclen of 12.
-            // Maps to 271 lit/length codes, 19 hdist codes and 16
-            // code length codes.
+            // Getting hlit of 14, hdist of 18, hclen of 12.  Maps to
+            // 271 lit/length codes, 19 hdist codes and 16 code length
+            // codes.  Doesn't match my expectations, as anything less
+            // than the max values doesn't give me enough info on how
+            // to implement this per RFC 1951.  (The dynamic
+            // compression section does not seem to provide enough
+            // information.)
 
             // I wonder if I am making some sort of parsing mistake...
+            // At the same time, if I log in, then reconnect, it
+            // doesn't kick me over to dynamic huffman, yet I have
+            // some character corruption.  I think there is a bug
+            // elsewhere which needs to be fixed first...  Then maybe
+            // the "weirdness" I see here *might* vanish...  If I'm
+            // lucky.
         },
         createFixedHuffmanMaps: function () {
             var lengths;
