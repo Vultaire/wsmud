@@ -212,7 +212,7 @@ var Inflate;
             } else if (value === 2) {
                 // Dynamic huffman codes: work to be done here.
                 this.transitionBitParser(
-                    this.getBitsFunction(14),
+                    this.getBitsFunctionLSBFirst(14),
                     this.onDynamicHuffmanFirst14Bits.bind(this)
                 );
             } else {
@@ -401,16 +401,14 @@ var Inflate;
             }
             return result;
         },
-        computeBitsValueBE: function (bits) {
-            // Computes bits in big endian order (MSB first)
+        computeBitsValueMSBFirst: function (bits) {
             var bitsVal = 0;
             for (var i=0; i<bits.length; i++) {
                 bitsVal = (bitsVal << 1) + bits[i];
             }
             return bitsVal;
         },
-        computeBitsValueLE: function (bits) {
-            // Computes bits in little endian order (MSB last)
+        computeBitsValueLSBFirst: function (bits) {
             var bitsVal = 0;
             for (var i=bits.length-1; 0<=i; i--) {
                 bitsVal = (bitsVal << 1) + bits[i];
@@ -439,7 +437,7 @@ var Inflate;
                 }
             };
         },
-        getBitsFunction: function (bits) {
+        getBitsFunctionLSBFirst: function (bits) {
             // Note about "extra bits" accompanying huffman codes:
             //
             // RFC says:
@@ -449,11 +447,26 @@ var Inflate;
             // Based on experimentation: Extra bits are alongside the
             // huffman codes, but are *not* the huffman codes, so use
             // LSB->MSB ordering.
+            //
+            // HOWEVER, the RFC says this, at least with regards to
+            // lengths: "The extra bits should be interpreted as a
+            // machine integer stored with the most-significant bit
+            // first, e.g., bits 1110 represent the value 14."
+            //
+            // Concretely observed on Aardwolf was that my distance
+            // code was coming through with an extra bits value being
+            // read as 24, when the actual intent was 3.  When I
+            // switched to LSB-first, this went away.
+            //
+            // Am I *really* doing LSB first?
+
+            // SO link regarding dynamic huffman encoding:
+            // http://stackoverflow.com/questions/10472526/dynamic-huffman-encoding-on-deflate-rfc-1951
 
             var that = this;
             return function () {
                 if (that.currentBits.length === bits) {
-                    return that.computeBitsValueLE(that.currentBits);
+                    return that.computeBitsValueLSBFirst(that.currentBits);
                 }
                 return null;
             };
@@ -489,7 +502,7 @@ var Inflate;
                     this.currentLengthValue = value;
                     var bitsNeeded = Math.floor((value - 261) / 4);
                     this.transitionBitParser(
-                        this.getBitsFunction(bitsNeeded),
+                        this.getBitsFunctionLSBFirst(bitsNeeded),
                         this.onLengthBits.bind(this)
                     );
                 }
@@ -526,7 +539,7 @@ var Inflate;
                 var bitsNeeded = Math.floor((value - 2) / 2);
 
                 this.transitionBitParser(
-                    this.getBitsFunction(bitsNeeded),
+                    this.getBitsFunctionLSBFirst(bitsNeeded),
                     this.onDistanceBits.bind(this)
                 );
                 return null;
