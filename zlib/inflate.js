@@ -101,7 +101,7 @@ var Inflate;
                 try {
                     onByteResult = this.onByte(byte);
                     if (onByteResult && (0 < onByteResult.length)) {
-                        console.log('onByte result:', onByteResult);
+                        //console.log('onByte result:', onByteResult);
                         output = output.concat(onByteResult);
                     }
                 } catch (e) {
@@ -162,8 +162,8 @@ var Inflate;
                 }
                 if (isSet(extractedValue)) {
                     try {
-                        console.log('Value detected; current bits:', this.currentBits,
-                                    'value:', extractedValue)
+                        //console.log('Value detected; current bits:', this.currentBits,
+                        //            'value:', extractedValue)
                         outputChunk = this.onValue(extractedValue);
                     } catch (e) {
                         if (e.name === 'SkipRemainingBits') {
@@ -177,7 +177,6 @@ var Inflate;
                     }
 
                     if (outputChunk && (0 < outputChunk.length)) {
-                        this.pushWindowBytes(outputChunk);
                         output = output.concat(outputChunk);
                     }
                 }
@@ -213,7 +212,7 @@ var Inflate;
             } else if (value === 2) {
                 // Dynamic huffman codes: work to be done here.
                 this.transitionBitParser(
-                    this.getBitsFunctionLE(14),
+                    this.getBitsFunction(14),
                     this.onDynamicHuffmanFirst14Bits.bind(this)
                 );
             } else {
@@ -229,13 +228,13 @@ var Inflate;
                     console.error('Length mismatch: len:', this.len, 'nlen:', this.nlen);
                 }
                 if (0 < this.len) {
-                    console.log('upcoming uncompressed bytes, count:', this.len);
+                    console.log('Upcoming uncompressed bytes, count:', this.len);
                     this.onByte = this.handleDeflateUncompressedBytes;
                 } else {
                     // I didn't expect this would happen, but if my
                     // parser is working right, I'm definitely seeing
                     // it.  Will check len vs nlen to make sure.
-                    console.log('Zero bytes in uncompressed block; resetting to next data block.');
+                    console.log('Received zero-length uncompressed block.');
                     this.onByte = this.handleDeflateBits;
                     this.handleDataBlockEnd();
                 }
@@ -370,14 +369,34 @@ var Inflate;
             this.window[this.windowPointer] = byte;
             this.windowPointer = (this.windowPointer + 1) % 0x10000;
         },
-        pushWindowBytes: function (bytes) {
-            bytes.forEach(this.pushWindowByte.bind(this));
-        },
         getPastBytes: function (length, distance) {
+            // NOT DOCUMENTED in RFC1951 as far as I can tell;
+            // apparently length can exceed distance.  Basically, it
+            // seems the intent is that bytes being added to the
+            // buffer *during* the copy process are also included.
+            //
+            // This is a little hard to explain, so more concretely:
+            // let's say the last byte I have is "#".  Let's say I
+            // have length 12, distance 1.  The first byte I copy is
+            // obviously "#".  What about 2-12?  After copying the
+            // first byte, my back buffer has one extra character (the
+            // second #), and that provides index 2 with a value.
+            // Likewise for 3-12.
+            //
+            // Because of this (in my opinion) inadequately documented
+            // behavior, the implementation here gets a little
+            // interesting.  Plus, unlike with literals, we *will*
+            // muck with our window buffer directly.  We need to make
+            // sure that our callers also handle this well...
+
+            // windowPointer is the next input position, *not* the last byte.
             var result = [];
             var pastPointer = (this.windowPointer + 0x10000 - distance) % 0x10000;
+            var byte;
             for (var i=0; i<length; i++) {
-                result.push(this.window[pastPointer]);
+                byte = this.window[pastPointer];
+                result.push(byte);
+                this.pushWindowByte(byte);
                 pastPointer = (pastPointer + 1) % 0x10000;
             }
             return result;
@@ -406,6 +425,9 @@ var Inflate;
                     huffman += bit;
                 });
                 if (map.hasOwnProperty(huffman)) {
+                    console.log(sprintf(
+                        'huffman code "%s" returning value %d',
+                        huffman, map[huffman]));
                     return map[huffman];
                 } else if (that.currentBits.length === maxBits) {
                     throw {
@@ -417,16 +439,17 @@ var Inflate;
                 }
             };
         },
-        getBitsFunctionBE: function (bits) {
-            var that = this;
-            return function () {
-                if (that.currentBits.length === bits) {
-                    return that.computeBitsValueBE(that.currentBits);
-                }
-                return null;
-            };
-        },
-        getBitsFunctionLE: function (bits) {
+        getBitsFunction: function (bits) {
+            // Note about "extra bits" accompanying huffman codes:
+            //
+            // RFC says:
+            // Generally packed least-significant to most-significant.
+            // Huffman codes explicitly are most-significant to least-significant.
+            //
+            // Based on experimentation: Extra bits are alongside the
+            // huffman codes, but are *not* the huffman codes, so use
+            // LSB->MSB ordering.
+
             var that = this;
             return function () {
                 if (that.currentBits.length === bits) {
@@ -441,10 +464,12 @@ var Inflate;
                                     String.fromCharCode(value), value));
                 // Keep same parser, just reset the bits
                 this.currentBits = [];
+                this.pushWindowByte(value);
                 return [value];
             } else if (value === 256) {
                 this.handleDataBlockEnd();
             } else {
+                console.log('Length value (raw)', value);
                 if (257 <= value && value <= 264) {
                     this.currentLength = value - 254;
                     this.transitionBitParser(
@@ -464,7 +489,7 @@ var Inflate;
                     this.currentLengthValue = value;
                     var bitsNeeded = Math.floor((value - 261) / 4);
                     this.transitionBitParser(
-                        this.getBitsFunctionBE(bitsNeeded),
+                        this.getBitsFunction(bitsNeeded),
                         this.onLengthBits.bind(this)
                     );
                 }
@@ -473,6 +498,8 @@ var Inflate;
         },
         onLengthBits: function (value) {
             this.currentLength = this.baseLengthMap[this.currentLengthValue] + value;
+            console.log('Value from bits:', value, 'Bits:', this.currentBits);
+            console.log('Computed length:', this.currentLength);
             this.transitionBitParser(
                 this.getHuffmanFunction(
                     this.distanceMap, this.distanceMapMaxBits),
@@ -480,6 +507,7 @@ var Inflate;
             );
         },
         onDistance: function (value) {
+            console.log('Distance value (raw)', value);
             if (value <= 3) {
                 this.currentDistance = value + 1;
                 output = this.getPastBytes(this.currentLength, this.currentDistance);
@@ -488,14 +516,17 @@ var Inflate;
                         this.literalLengthMap, this.literalLengthMapMaxBits),
                     this.onLiteralLength.bind(this)
                 );
-                console.log('Returning past bytes', output);
+                console.log('Returning past bytes', output.map(function (code) {
+                    return String.fromCharCode(code);
+                }));
                 return output;
             } else {
                 // bits needed
                 this.currentDistanceValue = value;
                 var bitsNeeded = Math.floor((value - 2) / 2);
+
                 this.transitionBitParser(
-                    this.getBitsFunctionBE(bitsNeeded),
+                    this.getBitsFunction(bitsNeeded),
                     this.onDistanceBits.bind(this)
                 );
                 return null;
@@ -503,13 +534,17 @@ var Inflate;
         },
         onDistanceBits: function (value) {
             this.currentDistance = this.baseDistanceMap[this.currentDistanceValue] + value;
+            console.log('Value from bits:', value, 'Bits:', this.currentBits);
+            console.log('Computed length:', this.currentLength);
             output = this.getPastBytes(this.currentLength, this.currentDistance);
             this.transitionBitParser(
                 this.getHuffmanFunction(
                     this.literalLengthMap, this.literalLengthMapMaxBits),
                 this.onLiteralLength.bind(this)
             );
-            console.log('Returning past bytes', output);
+            console.log('Returning past bytes', output.map(function (code) {
+                return String.fromCharCode(code);
+            }));
             return output;
         },
         transitionBitParser: function (getValue, onValue) {
