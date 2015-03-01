@@ -251,9 +251,9 @@ var Inflate;
             return [byte];
         },
         onDynamicHuffmanFirst14Bits: function (value) {
-            var this.hlit = value & 0x1f;
-            var this.hdist = (value >> 5) & 0x1f;
-            var this.hclen = (value >> 10) & 0xf;
+            this.hlit = value & 0x1f;
+            this.hdist = (value >> 5) & 0x1f;
+            this.hclen = (value >> 10) & 0xf;
             console.log('Dynamic huffman first 3 fields:',
                         this.hlit, this.hdist, this.hclen);
             this.error('Unimplemented and stuff; erroring out');
