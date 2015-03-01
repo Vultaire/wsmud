@@ -409,6 +409,34 @@ var Inflate;
             return bitsVal;
         },
         computeBitsValueLSBFirst: function (bits) {
+            // bits: 01001
+            // lsb-first value: 18
+            // msb-first value: 9
+            // manual runthrough:
+            /*
+              bitsVal = 0
+
+              i = 5-1 => 4
+              val = bits[4] => 1
+              bitsVal = (0<<1) + 1 => 1
+
+              i = 5-1 => 3
+              val = bits[3] => 0
+              bitsVal = (1<<1) + 0 => 2
+
+              i = 5-1 => 2
+              val = bits[2] => 0
+              bitsVal = (2<<1) + 0 => 4
+
+              i = 5-1 => 1
+              val = bits[1] => 1
+              bitsVal = (4<<1) + 1 => 9
+
+              i = 5-1 => 0
+              val = bits[0] => 0
+              bitsVal = (9<<1) + 0 => 18
+             */
+            // looks correct...
             var bitsVal = 0;
             for (var i=bits.length-1; 0<=i; i--) {
                 bitsVal = (bitsVal << 1) + bits[i];
@@ -458,7 +486,15 @@ var Inflate;
             // read as 24, when the actual intent was 3.  When I
             // switched to LSB-first, this went away.
             //
-            // Am I *really* doing LSB first?
+            // I sense craziness somewhere, but hopefully it's just in
+            // my own head...
+            //
+            // TO DO: Look at reference decompressor puff.c, and use
+            // to correct/finish my implementation.
+            //
+            // (Would be good to later document perceived
+            // underdocumented or undocumented gotchas on a blog
+            // post.)
 
             // SO link regarding dynamic huffman encoding:
             // http://stackoverflow.com/questions/10472526/dynamic-huffman-encoding-on-deflate-rfc-1951
