@@ -212,7 +212,7 @@ var Inflate;
             } else if (value === 2) {
                 // Dynamic huffman codes: work to be done here.
                 this.transitionBitParser(
-                    this.getBitsFunctionLSBFirst(14),
+                    this.getBitsFunction(14),
                     this.onDynamicHuffmanFirst14Bits.bind(this)
                 );
             } else {
@@ -401,14 +401,7 @@ var Inflate;
             }
             return result;
         },
-        computeBitsValueMSBFirst: function (bits) {
-            var bitsVal = 0;
-            for (var i=0; i<bits.length; i++) {
-                bitsVal = (bitsVal << 1) + bits[i];
-            }
-            return bitsVal;
-        },
-        computeBitsValueLSBFirst: function (bits) {
+        computeBitsValue: function (bits) {
             // bits: 01001
             // lsb-first value: 18
             // msb-first value: 9
@@ -465,7 +458,7 @@ var Inflate;
                 }
             };
         },
-        getBitsFunctionLSBFirst: function (bits) {
+        getBitsFunction: function (bits) {
             // Note about "extra bits" accompanying huffman codes:
             //
             // RFC says:
@@ -495,6 +488,12 @@ var Inflate;
             // (Would be good to later document perceived
             // underdocumented or undocumented gotchas on a blog
             // post.)
+            //
+            // UPDATE: It seems there *is* a contradiction between the
+            // RFC and reality.  Not only does my code not work if I
+            // follow the RFC's MSB->LSB ordering, but puff.c, the
+            // reference implementation decompressor, also follows
+            // LSB->MSB.
 
             // SO link regarding dynamic huffman encoding:
             // http://stackoverflow.com/questions/10472526/dynamic-huffman-encoding-on-deflate-rfc-1951
@@ -502,7 +501,7 @@ var Inflate;
             var that = this;
             return function () {
                 if (that.currentBits.length === bits) {
-                    return that.computeBitsValueLSBFirst(that.currentBits);
+                    return that.computeBitsValue(that.currentBits);
                 }
                 return null;
             };
@@ -538,7 +537,7 @@ var Inflate;
                     this.currentLengthValue = value;
                     var bitsNeeded = Math.floor((value - 261) / 4);
                     this.transitionBitParser(
-                        this.getBitsFunctionLSBFirst(bitsNeeded),
+                        this.getBitsFunction(bitsNeeded),
                         this.onLengthBits.bind(this)
                     );
                 }
@@ -575,7 +574,7 @@ var Inflate;
                 var bitsNeeded = Math.floor((value - 2) / 2);
 
                 this.transitionBitParser(
-                    this.getBitsFunctionLSBFirst(bitsNeeded),
+                    this.getBitsFunction(bitsNeeded),
                     this.onDistanceBits.bind(this)
                 );
                 return null;
