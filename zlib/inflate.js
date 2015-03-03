@@ -23,6 +23,12 @@ var Inflate;
         return (val !== null && typeof val !== 'undefined');
     };
 
+    // Magic sequence for code length values used for dynamic huffman
+    // encoding.  The ordering is as defined here.
+    var codeLengthValues = [
+        16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15
+    ];
+
     Inflate = {
         initialize: function () {
             // For zlib frame bytes
@@ -74,8 +80,11 @@ var Inflate;
             this.hlit = 0;
             this.hdist = 0;
             this.hclen = 0;
-            this.codeLengthCodeLengths = [];
             this.codeLengthMap = null;
+            this.codeLengthMapMaxBits = null;
+            this.lastLength = null;
+            this.repetitionValue = null;
+            this.repetitionBaseCount = null;
             this.literalLengthCodeLengths = [];
             this.distanceCodeLengths = [];
         },
@@ -253,9 +262,11 @@ var Inflate;
             this.hlit = value & 0x1f;
             this.hdist = (value >> 5) & 0x1f;
             this.hclen = (value >> 10) & 0xf;
-            console.log('Dynamic huffman first 3 fields:',
-                        this.hlit, this.hdist, this.hclen);
-            this.error('Unimplemented and stuff; erroring out');
+
+            this.transitionBitParser(
+                this.getBitsFunction(this.hclen * 3, true),
+                this.onDynamicHuffmanCodeLengths.bind(this)
+            );
             // Reminder of order of code length alphabet encodings:
             // 16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2,
             // 14, 1, 15
@@ -275,6 +286,130 @@ var Inflate;
             // elsewhere which needs to be fixed first...  Then maybe
             // the "weirdness" I see here *might* vanish...  If I'm
             // lucky.
+        },
+        onDynamicHuffmanCodeLengths: function (value) {
+            // Compute code length code lengths :)
+            // value is simply "true", so pull from currentBits.
+            var lengths = [];
+            var i;
+            for (i=0; i<this.hclen; i++) {
+                lengths.push(
+                    this.computeBitsValue(
+                        this.currentBits.slice(i*3, (i+1)*3)));
+            }
+            // Skipping remaining codes; they are all 0 and won't be
+            // included in the generated map.
+
+            // Compute code length huffman codes
+            var mapAndMax = this.createCodeLengthMap(lengths);
+            this.codeLengthMap = mapAndMax[0];
+            this.codeLengthMapMaxBits = mapAndMax[1];
+
+            // Start pulling code lengths for literals/lengths and
+            // distances.
+            this.transitionBitParser(
+                this.getHuffmanFunction(
+                    this.codeLengthMap, this.codeLengthMapMaxBits),
+                this.onCodeLength.bind(this)
+            );
+
+        },
+        onCodeLength: function (value) {
+            // convert value to one or more lengths
+            if (0 <= value && value <= 15) {
+                // pass; we'll handle it below.
+            } else if (value === 16) {
+                if (this.lastLength === null) {
+                    throw {
+                        name: 'RuntimeError',
+                        message: 'Received a dynamic code length of 16, but no previous code length exists to repeat.'
+                    };
+                } else {
+                    this.repetitionValue = this.lastLength;
+                    this.repetitionBaseCount = 3;
+                    this.transitionBitParser(
+                        this.getBitsFunction(2),
+                        this.onCodeLengthRepetition.bind(this)
+                    );
+                }
+            } else if (value === 17) {
+                this.repetitionValue = 0;
+                this.repetitionBaseCount = 3;
+                this.transitionBitParser(
+                    this.getBitsFunction(3),
+                    this.onCodeLengthRepetition.bind(this)
+                );
+            } else if (value === 18) {
+                this.repetitionValue = 0;
+                this.repetitionBaseCount = 11;
+                this.transitionBitParser(
+                    this.getBitsFunction(7),
+                    this.onCodeLengthRepetition.bind(this)
+                );
+            } else {
+                throw {
+                    name: 'ValueError',
+                    message: 'Unexpected value received',
+                    value: value,
+                };
+            }
+            // If we're not done, we don't change state.  No real need
+            // to do anything with addDynamicLength's return value
+            // here.
+            this.addDynamicLengths([value]);
+        },
+        onCodeLengthRepetition: function (value) {
+            var repetitions = value + this.repetitionBaseCount;
+            var lengths = [];
+            for (var i=0; i<repetitions; i++) {
+                lengths.push(this.repetitionValue);
+            }
+            var done = this.addDynamicLengths(lengths);
+            if (!done) {
+                // Transition back to pulling code length huffman codes
+                this.transitionBitParser(
+                    this.getHuffmanFunction(
+                        this.codeLengthMap, this.codeLengthMapMaxBits),
+                    this.onCodeLength.bind(this)
+                );
+            }
+        },
+        addDynamicLengths: function (lengths) {
+            // append the lengths
+            for (var i=0; i<lengths.length; i++) {
+                if (this.literalLengthCodeLengths.length < this.hlen) {
+                    this.literalLengthCodeLengths.push(lengths[i]);
+                } else if (this.distanceCodeLengths.length < this.hlen) {
+                    this.distanceCodeLengths.push(lengths[i]);
+                } else {
+                    throw {
+                        name: 'RuntimeError',
+                        message: 'Unexpected: extra code lengths detected for dynamic huffman decoding',
+                        value: lengths.slice(i),
+                    };
+                }
+            }
+
+            var mapAndMax;
+            if (this.hlen === this.literalLengthCodeLengths.length &&
+                this.hdist === this.distanceCodeLengths.length) {
+
+                // Generate our dynamic maps
+                mapAndMax = this.createMapFromLengths(this.literalLengthCodeLengths);
+                this.literalLengthMap = mapAndMax[0];
+                this.literalLengthMapMaxBits = mapAndMax[1];
+
+                mapAndMax = this.createMapFromLengths(this.distanceCodeLengths);
+                this.distanceMap = mapAndMax[0];
+                this.distanceMapMaxBits = mapAndMax[1];
+
+                // Transition to pulling compressed data
+                this.transitionBitParser(
+                    this.getHuffmanFunction(
+                        this.literalLengthMap, this.literalLengthMapMaxBits),
+                    this.onLiteralLength.bind(this)
+                );
+            }
         },
         createFixedHuffmanMaps: function () {
             var lengths;
@@ -306,25 +441,9 @@ var Inflate;
             this.distanceMap = mapAndMax[0];
             this.distanceMapMaxBits = mapAndMax[1];
         },
-        createMapFromLengths: function (lengths) {
+        createMapFromLengths: function (lengths, valueOverrideMap) {
             var map = {};
             // using RFC 1951 names for some of these variables.
-
-            /*
-              ACK; I was mistaken.  Huffman codes are truly being
-              generated in a binary tree fashion, where e.g. 011 is
-              clearly distinct from 11.
-
-              Alternate methodologies:
-
-              - Use nested {0: ..., 1:...} objects to literally
-                represent a tree.
-
-              - Convert the ints to strings, and use the bit sequence
-                converted to a string as the key.
-
-              I'm going to try the latter.
-             */
 
             // Step 1: "Count the number of codes for each code length."
             var bl_count = {};
@@ -359,11 +478,39 @@ var Inflate;
                 len = lengths[i];
                 if (len != 0) {
                     huffman = sprintf('%0' + len + 'b', next_code[len]);
-                    map[huffman] = i;
+                    if (valueOverrideMap) {
+                        map[huffman] = valueOverrideMap[i];
+                    } else {
+                        map[huffman] = i;
+                    }
                     next_code[len]++;
                 }
             }
             return [map, MAX_BITS];
+        },
+        createCodeLengthMap: function (lengths) {
+            var valuesToUse = [];
+            var valueOverrideMap = {};
+            var i;
+            for (i=0; i<lengths.length; i++) {
+                if (lengths[i] > 0) {
+                    valuesToUse.push(codeLengthValues[i]);
+                }
+            }
+            for (i=0; i<valuesToUse.length; i++) {
+                valueOverrideMap[i] = valuesToUse[i];
+            }
+            console.log('Creating code length map:');
+            console.log('Lengths:', lengths);
+            console.log('Values to use:', valuesToUse);
+            console.log('Final mapping:', valueOverrideMap);
+            // Filter out any remaining 0's from the length list.
+            lengths = lengths.filter(function (i) {return i;});
+            console.log("Lengths after removing 0's:", lengths);
+            var mapAndMax = this.createMapFromLengths(lengths, valueOverrideMap);
+            console.log('Generated Huffman mapping:', mapAndMax[0]);
+            console.log('Max bits in map:', mapAndMax[1]);
+            return mapAndMax;
         },
         pushWindowByte: function (byte) {
             this.window[this.windowPointer] = byte;
@@ -458,7 +605,7 @@ var Inflate;
                 }
             };
         },
-        getBitsFunction: function (bits) {
+        getBitsFunction: function (bits, booleanOnly) {
             // Note about "extra bits" accompanying huffman codes:
             //
             // RFC says:
@@ -501,7 +648,11 @@ var Inflate;
             var that = this;
             return function () {
                 if (that.currentBits.length === bits) {
-                    return that.computeBitsValue(that.currentBits);
+                    if (booleanOnly) {
+                        return true;
+                    } else {
+                        return that.computeBitsValue(that.currentBits);
+                    }
                 }
                 return null;
             };
