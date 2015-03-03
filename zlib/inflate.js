@@ -262,6 +262,9 @@ var Inflate;
             this.hlit = value & 0x1f;
             this.hdist = (value >> 5) & 0x1f;
             this.hclen = (value >> 10) & 0xf;
+            console.log('hlit:', this.hlit);
+            console.log('hdist:', this.hdist);
+            console.log('hclen:', this.hclen);
 
             this.transitionBitParser(
                 this.getBitsFunction(this.hclen * 3, true),
@@ -316,8 +319,10 @@ var Inflate;
         },
         onCodeLength: function (value) {
             // convert value to one or more lengths
+            console.log('onCodeLength:', value);
             if (0 <= value && value <= 15) {
                 // pass; we'll handle it below.
+                console.log('Exact code:', value);
             } else if (value === 16) {
                 if (this.lastLength === null) {
                     throw {
@@ -331,6 +336,7 @@ var Inflate;
                         this.getBitsFunction(2),
                         this.onCodeLengthRepetition.bind(this)
                     );
+                    return;
                 }
             } else if (value === 17) {
                 this.repetitionValue = 0;
@@ -339,6 +345,7 @@ var Inflate;
                     this.getBitsFunction(3),
                     this.onCodeLengthRepetition.bind(this)
                 );
+                return;
             } else if (value === 18) {
                 this.repetitionValue = 0;
                 this.repetitionBaseCount = 11;
@@ -346,6 +353,7 @@ var Inflate;
                     this.getBitsFunction(7),
                     this.onCodeLengthRepetition.bind(this)
                 );
+                return;
             } else {
                 throw {
                     name: 'ValueError',
@@ -356,7 +364,9 @@ var Inflate;
             // If we're not done, we don't change state.  No real need
             // to do anything with addDynamicLength's return value
             // here.
+            this.lastLength = value;
             this.addDynamicLengths([value]);
+            this.currentBits = [];
         },
         onCodeLengthRepetition: function (value) {
             var repetitions = value + this.repetitionBaseCount;
@@ -364,6 +374,8 @@ var Inflate;
             for (var i=0; i<repetitions; i++) {
                 lengths.push(this.repetitionValue);
             }
+            console.log('Repetition:', lengths);
+            this.lastLength = this.repetitionValue;
             var done = this.addDynamicLengths(lengths);
             if (!done) {
                 // Transition back to pulling code length huffman codes
@@ -376,12 +388,17 @@ var Inflate;
         },
         addDynamicLengths: function (lengths) {
             // append the lengths
+            console.log('Adding dynamic lengths:', lengths);
             for (var i=0; i<lengths.length; i++) {
-                if (this.literalLengthCodeLengths.length < this.hlen) {
+                if (this.literalLengthCodeLengths.length < this.hlit) {
+                    console.log('Adding lit/len code');
                     this.literalLengthCodeLengths.push(lengths[i]);
-                } else if (this.distanceCodeLengths.length < this.hlen) {
+                } else if (this.distanceCodeLengths.length < this.hdist) {
+                    console.log('Adding distance code');
                     this.distanceCodeLengths.push(lengths[i]);
                 } else {
+                    console.log('Literal/length code list dump:', this.literalLengthCodeLengths);
+                    console.log('Distance code list dump:', this.distanceCodeLengths);
                     throw {
                         name: 'RuntimeError',
                         message: 'Unexpected: extra code lengths detected for dynamic huffman decoding',
@@ -391,9 +408,10 @@ var Inflate;
             }
 
             var mapAndMax;
-            if (this.hlen === this.literalLengthCodeLengths.length &&
+            if (this.hlit === this.literalLengthCodeLengths.length &&
                 this.hdist === this.distanceCodeLengths.length) {
 
+                console.log('Adding dynamic lengths:', lengths);
                 // Generate our dynamic maps
                 mapAndMax = this.createMapFromLengths(this.literalLengthCodeLengths);
                 this.literalLengthMap = mapAndMax[0];
@@ -409,7 +427,16 @@ var Inflate;
                         this.literalLengthMap, this.literalLengthMapMaxBits),
                     this.onLiteralLength.bind(this)
                 );
+                // Return true: we're done and have already taken care
+                // of the next transition.
+                console.log('Done creating dynamic huffman tables!');
+                return true;
             }
+            // Return false: we're not done, no transition has been done yet.
+            console.log('Not done yet');
+            console.log('Current lit/len code count:', this.literalLengthCodeLengths.length);
+            console.log('Current distance code count:', this.distanceCodeLengths.length);
+            return false;
         },
         createFixedHuffmanMaps: function () {
             var lengths;
@@ -456,7 +483,7 @@ var Inflate;
                 }
             }
 
-            var MAX_BITS = Object.keys(bl_count).sort().slice(-1)[0];
+            var MAX_BITS = parseInt(Object.keys(bl_count).sort().slice(-1)[0]);
             for (i=1; i<MAX_BITS; i++) {
                 if (!(i in bl_count)) {
                     bl_count[i] = 0;
