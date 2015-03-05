@@ -16,6 +16,61 @@ var Inflate;
   noncompressed block is encountered.  Anyway, will do the rewrite
   another night.
 
+  ----------------------------------------------------------------------
+
+  Creating code length huffman table:
+
+  First, create list of 20 lengths.  Include 0 lengths (i.e. "skipped"
+  values).
+
+  How do these get created?
+
+  1. Create list of lengths.
+     - Count the lengths of everything.
+     - if all the lengths are zero, then there will be no codes; 0 should be skipped.
+
+  2. Check for oversubscription...  (I don't do this)
+     left = 1
+     for i in range(1, maxbits+1):
+       left <<= 1  (becomes 2 on first loop through)
+       left -= count[i]  (e.g. if count[i] is 2 on the first loop, then there's exactly 2 codes; if 1 or less, then we're good.)
+       if left < 0: ERROR
+
+  3. Create offsets into symbol table...
+     off[1] = 0
+     off[2] = off[1] + count[1]
+     off[3] = off[2] + count[2]
+     etc.
+     (C-specific, likely not relevant for me.)
+
+  4. Create the symbol mapping
+     For each symbol (0...n-1):
+       if the length is *not* zero,
+       then the symbol is set to the next value for the offset in question.
+
+  Basically, this seems the same as my code.
+
+  HMM... but maybe there's another bit here.  Maybe tweaking the map
+  with overrides is the wrong thing; maybe we need to do the overrides
+  based upon the output values of the map?
+
+  My code trims the magic values by filtering out any zeroes...  maybe
+  the effect is the same here?  Maybe this changes nothing?  ...but I
+  think the C code is simpler; I think I'll adopt its methodology.
+
+  ERM... wait a sec... the C code *does* do something w/ the order bits.
+
+  - First: my copy of the list is identical to the C copy; no problem
+    there.
+
+  - Second: the conversion is done *before* going into the huffman
+    map.  This also in theory is the same as my code, but I'm not 100%
+    sure I haven't missed some small nuance.  ...Regardless, I like
+    the C code better; let's adopt it.
+
+ ...did the above changes; getting the same error.  Nothing obvious is
+ jumping at me here.  Meh...
+
  */
 
 (function () {
@@ -293,18 +348,25 @@ var Inflate;
         onDynamicHuffmanCodeLengths: function (value) {
             // Compute code length code lengths :)
             // value is simply "true", so pull from currentBits.
-            var lengths = [];
+
+            // ...Lengths are out of order.  Let's map them to the
+            // correct values, then put them in order.
+            var lengthMap = {};
             var i;
             for (i=0; i<this.hclen; i++) {
-                lengths.push(
-                    this.computeBitsValue(
-                        this.currentBits.slice(i*3, (i+1)*3)));
+                lengthMap[codeLengthValues[i]] = this.computeBitsValue(
+                    this.currentBits.slice(i*3, (i+1)*3));
             }
-            // Skipping remaining codes; they are all 0 and won't be
-            // included in the generated map.
+            for (i=this.hclen; i<19; i++) {
+                lengthMap[codeLengthValues[i]] = 0
+            }
+            lengths = []
+            for (i=0; i<19; i++) {
+                lengths.push(lengthMap[i]);
+            }
 
             // Compute code length huffman codes
-            var mapAndMax = this.createCodeLengthMap(lengths);
+            var mapAndMax = this.createMapFromLengths(lengths);
             this.codeLengthMap = mapAndMax[0];
             this.codeLengthMapMaxBits = mapAndMax[1];
 
@@ -468,7 +530,7 @@ var Inflate;
             this.distanceMap = mapAndMax[0];
             this.distanceMapMaxBits = mapAndMax[1];
         },
-        createMapFromLengths: function (lengths, valueOverrideMap) {
+        createMapFromLengths: function (lengths) {
             var map = {};
             // using RFC 1951 names for some of these variables.
 
@@ -505,39 +567,11 @@ var Inflate;
                 len = lengths[i];
                 if (len != 0) {
                     huffman = sprintf('%0' + len + 'b', next_code[len]);
-                    if (valueOverrideMap) {
-                        map[huffman] = valueOverrideMap[i];
-                    } else {
-                        map[huffman] = i;
-                    }
+                    map[huffman] = i;
                     next_code[len]++;
                 }
             }
             return [map, MAX_BITS];
-        },
-        createCodeLengthMap: function (lengths) {
-            var valuesToUse = [];
-            var valueOverrideMap = {};
-            var i;
-            for (i=0; i<lengths.length; i++) {
-                if (lengths[i] > 0) {
-                    valuesToUse.push(codeLengthValues[i]);
-                }
-            }
-            for (i=0; i<valuesToUse.length; i++) {
-                valueOverrideMap[i] = valuesToUse[i];
-            }
-            console.log('Creating code length map:');
-            console.log('Lengths:', lengths);
-            console.log('Values to use:', valuesToUse);
-            console.log('Final mapping:', valueOverrideMap);
-            // Filter out any remaining 0's from the length list.
-            lengths = lengths.filter(function (i) {return i;});
-            console.log("Lengths after removing 0's:", lengths);
-            var mapAndMax = this.createMapFromLengths(lengths, valueOverrideMap);
-            console.log('Generated Huffman mapping:', mapAndMax[0]);
-            console.log('Max bits in map:', mapAndMax[1]);
-            return mapAndMax;
         },
         pushWindowByte: function (byte) {
             this.window[this.windowPointer] = byte;
