@@ -18,10 +18,10 @@ var MCCPFilter;
             if (this.compress) {
                 // decompress and pass through as-is
                 var result = this.inflate.push(buffer);
-                console.log('inflate result:', result);
+                //console.log('inflate result:', result);
             } else {
                 result = TelnetFilter.filter.call(this, socket, buffer);
-                console.log('TelnetFilter result:', result);
+                //console.log('TelnetFilter result:', result);
             }
             return result;
         },
