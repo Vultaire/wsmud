@@ -132,9 +132,9 @@ var Inflate;
             this.distanceMapMaxBits = null;
 
             // For handling dynamic huffman codes
-            this.hlit = 0;
-            this.hdist = 0;
-            this.hclen = 0;
+            this.nlen = 0;
+            this.ndist = 0;
+            this.ncode = 0;
             this.codeLengthMap = null;
             this.codeLengthMapMaxBits = null;
             this.lastLength = null;
@@ -314,23 +314,23 @@ var Inflate;
             return [byte];
         },
         onDynamicHuffmanFirst14Bits: function (value) {
-            this.hlit = value & 0x1f;
-            this.hdist = (value >> 5) & 0x1f;
-            this.hclen = (value >> 10) & 0xf;
-            console.log('hlit:', this.hlit);
-            console.log('hdist:', this.hdist);
-            console.log('hclen:', this.hclen);
+            this.nlen = value & 0x1f;
+            this.ndist = (value >> 5) & 0x1f;
+            this.ncode = (value >> 10) & 0xf;
+            console.log('nlen:', this.nlen);
+            console.log('ndist:', this.ndist);
+            console.log('ncode:', this.ncode);
 
             this.transitionBitParser(
-                this.getBitsFunction(this.hclen * 3, true),
+                this.getBitsFunction(this.ncode * 3, true),
                 this.onDynamicHuffmanCodeLengths.bind(this)
             );
             // Reminder of order of code length alphabet encodings:
             // 16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2,
             // 14, 1, 15
 
-            // Getting hlit of 14, hdist of 18, hclen of 12.  Maps to
-            // 271 lit/length codes, 19 hdist codes and 16 code length
+            // Getting nlen of 14, ndist of 18, ncode of 12.  Maps to
+            // 271 lit/length codes, 19 ndist codes and 16 code length
             // codes.  Doesn't match my expectations, as anything less
             // than the max values doesn't give me enough info on how
             // to implement this per RFC 1951.  (The dynamic
@@ -353,11 +353,11 @@ var Inflate;
             // correct values, then put them in order.
             var lengthMap = {};
             var i;
-            for (i=0; i<this.hclen; i++) {
+            for (i=0; i<this.ncode; i++) {
                 lengthMap[codeLengthValues[i]] = this.computeBitsValue(
                     this.currentBits.slice(i*3, (i+1)*3));
             }
-            for (i=this.hclen; i<19; i++) {
+            for (i=this.ncode; i<19; i++) {
                 lengthMap[codeLengthValues[i]] = 0
             }
             lengths = []
@@ -452,10 +452,10 @@ var Inflate;
             // append the lengths
             console.log('Adding dynamic lengths:', lengths);
             for (var i=0; i<lengths.length; i++) {
-                if (this.literalLengthCodeLengths.length < this.hlit) {
+                if (this.literalLengthCodeLengths.length < this.nlen) {
                     console.log('Adding lit/len code');
                     this.literalLengthCodeLengths.push(lengths[i]);
-                } else if (this.distanceCodeLengths.length < this.hdist) {
+                } else if (this.distanceCodeLengths.length < this.ndist) {
                     console.log('Adding distance code');
                     this.distanceCodeLengths.push(lengths[i]);
                 } else {
@@ -470,8 +470,8 @@ var Inflate;
             }
 
             var mapAndMax;
-            if (this.hlit === this.literalLengthCodeLengths.length &&
-                this.hdist === this.distanceCodeLengths.length) {
+            if (this.nlen === this.literalLengthCodeLengths.length &&
+                this.ndist === this.distanceCodeLengths.length) {
 
                 console.log('Adding dynamic lengths:', lengths);
                 // Generate our dynamic maps
