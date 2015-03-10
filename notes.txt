@@ -1,11 +1,95 @@
 IAC WILL 86   - MCCP (new)   -> DONE
 IAC WILL 85   - MCCP (old)   -> DONE
-IAC WILL 102  - Aardwolf-specific extensions
-IAC WILL 200  - Achaea Telnet Client Protocol (ATCP)
-IAC WILL 201  - GMCP ("ATCP2")
+IAC WILL 102  - Aardwolf-specific extensions           - TO DO
+IAC WILL 200  - Achaea Telnet Client Protocol (ATCP)   - SKIP? (GMCP replaces it?)
+IAC WILL 201  - GMCP ("ATCP2")                         - TO DO
 IAC DO 102    - Mud requests Aardwolf-specific extensions (don't for now)
 IAC DO 24     - Mud requests Terminal Type (RFC1091)
+                -> SKIPPING for now; little or no perceived value at present.
+                   For now: reply with IAC WONT 24
 IAC DO 31     - Mud requests NAWS (Negotiate about window size)  (RFC1073)
-
+                -> SKIPPING for now; little or no perceived value at present.
+                   For now: reply with IAC WONT 31
 IAC WILL 1    - Mud offers to echo          (Benefit present?  Not sure.  Ask?)
+                -> SKIPPING for now; little or no perceived value at present.
+                   For now: ignore, or even better, reply with IAC DONT 1
+                   (Notice I said *D*ONT, not *W*ONT!)
 IAC WON'T 1   - Mud revokes offer to echo   (In other words, can deliberately ignore.)
+
+
+----------------------------------------------------------------------
+
+Code 24 explanation (RFC 1091):
+
+Aard is doing IAC DO TERMINAL-TYPE(24), meaning Aard is willing to receive terminal
+type info.  (If it was IAC WILL TERMINAL-TYPE, then Aard would be willing to send
+the terminal info.)
+
+Client would respond with IAC WILL TERMINAL-TYPE or IAC WONT TERMINAL-TYPE
+
+Server then responds with IAC SB TERMINAL-TYPE SEND(1) IAC SE.
+
+Client then sends IAC SB TERMINAL-TYPE IS(0) ... IAC SE.
+
+Server may repeat the request; if it does, the client should send a
+new option if possible.  If not possible, the client should re-send
+the same response.  In the case of *another* repeated request, the
+client should then go back to the first item.
+
+This seems to be truly intended for real terminal emulation...  Might
+just want to ask Lasher about his intent with supporting this, and if
+he thinks there's any real need on the WebSocket client.  (I'm leaning
+towards "no").
+
+NOTE: IF this is done, getting an Aardwolf implementation is simple
+and a good first goal.  Getting a full-blown implementation is harder,
+but maybe can be left to others.
+
+----------------------------------------------------------------------
+
+Code 31 explanation (RFC 1073):
+
+Aard is suggesting that NAWS should be used via IAC DO NAWS(31).
+
+The client should respond with IAC WILL NAWS or IAC WONT NAWS.
+
+The client should then send width/height via IAC SB NAWS <16-bit width>
+<16-bit height> IAC SE.  Integers are in "standard byte and bit
+order", i.e. big endian.
+
+The client can repeat the above command at any time, unless the server
+follows up with IAC WONT NAWS, in which case further requests are
+pointless.
+
+Verdict: not sure how Aard actually uses this; it seems of limited
+value for a browser-based client.  Maybe ask Lasher?
+
+----------------------------------------------------------------------
+
+Code 102 (Mud-specific extensions)
+
+Docs:
+- MUSHclient release notes:
+  http://www.gammon.com.au/scripts/showrelnote.php?version=4.31&productid=0
+- "Help telopts" on Aardwolf
+
+Server wants client to send 102 stuff:
+Server: IAC DO 102
+Client: IAC WILL 102
+
+Server wants to send client 102 stuff:
+Server: IAC WILL 102
+Client: IAC DO 102
+
+If both received: full duplex enabled.
+
+Either direction: IC SB 102 x y IAC SE
+
+Notes imply that there could be more bytes... but it seems that right
+now it's purely a 2 byte sequence?  Of course, double-check what "help
+telopts" says.
+
+From wsmud's perspective: handle the negotiation, fire events for
+tx/rx enabled, and fire events for messages from the server.  Plugins
+or components which need to do the inverse will wait to get the "tx
+enabled" message before proceeding.
