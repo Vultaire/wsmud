@@ -1,0 +1,11 @@
+IAC WILL 86   - MCCP (new)   -> DONE
+IAC WILL 85   - MCCP (old)   -> DONE
+IAC WILL 102  - Aardwolf-specific extensions
+IAC WILL 200  - Achaea Telnet Client Protocol (ATCP)
+IAC WILL 201  - GMCP ("ATCP2")
+IAC DO 102    - Mud requests Aardwolf-specific extensions (don't for now)
+IAC DO 24     - Mud requests Terminal Type (RFC1091)
+IAC DO 31     - Mud requests NAWS (Negotiate about window size)  (RFC1073)
+
+IAC WILL 1    - Mud offers to echo          (Benefit present?  Not sure.  Ask?)
+IAC WON'T 1   - Mud revokes offer to echo   (In other words, can deliberately ignore.)
