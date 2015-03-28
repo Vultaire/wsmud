@@ -42,10 +42,11 @@ var debug;
     MenuBar.prototype.initMenus = function () {
         var menuBar = this;
         ['file', 'edit', 'help'].forEach(function (label) {
-            menuBar.initMenu(label);
+            menuBar.createMenu(label);
         });
+        // TO DO: Add event handlers to the individual menu items
     };
-    MenuBar.prototype.initMenu = function (label) {
+    MenuBar.prototype.createMenu = function (label) {
         var menuBar = this;
         var parentSelector = sprintf('div.menu > span.%s', label);
         var bodySelector = sprintf('div.menu > ul.%s-menu', label);
