@@ -29,10 +29,13 @@ var debug;
         document.querySelector('div.menu').addEventListener('click', function (e) {
             // If the menu is clicked while open, it will close.
             // Otherwise: no-op.
-            if (menuBar.currentMenu && !e.defaultPrevented) {
-                menuBar.currentMenu.$popup.addClass('hidden');
-                menuBar.currentMenu = null;
-                console.log('menu hidden');
+            if (!e.defaultPrevented && menuBar.currentMenu) {
+                menuBar.closeMenu();  // unsets menuBar.currentMenu
+            }
+        });
+        window.addEventListener('click', function (e) {
+            if (!e.defaultPrevented && menuBar.currentMenu && !e.menuEventHandled) {
+                menuBar.closeMenu();
             }
         });
     };
@@ -91,6 +94,12 @@ var debug;
                 menuBar.currentMenu.$popup.removeClass('hidden');
             }
         });
+    };
+    MenuBar.prototype.closeMenu = function () {
+        if (this.currentMenu) {
+            this.currentMenu.$popup.addClass('hidden');
+            this.currentMenu = null;
+        }
     };
 
     document.addEventListener('DOMContentLoaded', function () {
