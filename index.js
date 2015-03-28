@@ -23,6 +23,19 @@ var debug;
     var MenuBar = function () {
         this.currentMenu = null;
     };
+    MenuBar.prototype.init = function () {
+        var menuBar = this;
+        menuBar.initMenus();
+        document.querySelector('div.menu').addEventListener('click', function (e) {
+            // If the menu is clicked while open, it will close.
+            // Otherwise: no-op.
+            if (menuBar.currentMenu && !e.defaultPrevented) {
+                menuBar.currentMenu.$popup.addClass('hidden');
+                menuBar.currentMenu = null;
+                console.log('menu hidden');
+            }
+        });
+    };
     MenuBar.prototype.initMenus = function () {
         var menuBar = this;
         ['file', 'edit', 'help'].forEach(function (label) {
@@ -65,9 +78,7 @@ var debug;
 
                 // Show the menu
                 $menuPopup.removeClass('hidden');
-            } else {
-                menuBar.currentMenu.$popup.addClass('hidden');
-                menuBar.currentMenu = null;
+                e.preventDefault();
             }
         });
         menuElem.addEventListener('mouseover', function (e) {
@@ -85,7 +96,7 @@ var debug;
     document.addEventListener('DOMContentLoaded', function () {
         onResize();
         var menuBar = new MenuBar();
-        menuBar.initMenus();
+        menuBar.init();
 
         var client = Object.create(Client).initialize(
             document.querySelector('div.output'));
