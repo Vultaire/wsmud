@@ -7,12 +7,10 @@ div.menu {
     color: black;
     padding: 5px;
 }
-.ui-menu {
-    width: 200px;
-}
-.ui-menu-item {
+.ui-menu .ui-menu-item {
     font-family: 'serif';
     font-size: 1.0em;
+    padding: 3px .4em 3px .4em;  /* default for right is normally 1em */
 }
 div.menu span {
     margin-right: 10px;
