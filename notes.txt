@@ -93,3 +93,90 @@ From wsmud's perspective: handle the negotiation, fire events for
 tx/rx enabled, and fire events for messages from the server.  Plugins
 or components which need to do the inverse will wait to get the "tx
 enabled" message before proceeding.
+
+----------------------------------------------------------------------
+
+Another development thread: consider configuration save/load
+============================================================
+
+Aard-specific enhancements are nice, but if the basic
+alias/trigger/macro functionality isn't there, then it's almost
+pointless.
+
+We can use the HTML 5 file API as a naive first step, but I think
+there's a 5MB limit; this cramps powerusers a bit and might even cramp
+casual users with a lot of plugins and/or configuration.  Plus, this
+doesn't accomplish one of the app's goals: portable configurations
+that don't require taking the client with you.
+
+This implies either storage on the site running the app (not
+preferred, but doable), or reliance on popular cloud storage
+(e.g. Google Drive and Dropbox).  I lean towards the latter.
+
+Integration w/ Dropbox
+======================
+
+At client load, display this dialog::
+
+  +------------------------------------------------+
+  | Connect                                        |
+  +------------------------------------------------+
+  | Returning users: Load configuration from:      |
+  |   [Dropbox] [Google Drive]                     |
+  |                                                |
+  | Host: [                ]  Port: [        ]     |
+  |                             [Connect] [Cancel] |
+  +------------------------------------------------+
+
+On client exit (preferably via a menu, but maybe also on attempted
+navigate-away): display this dialog::
+
+  +------------------------------------------------+
+  | Save configuration?                            |
+  +------------------------------------------------+
+  | You appear to have an unsaved or changed       |
+  | configuration.  Would you like to save it?     |
+  | Click the appropriate button below.            |
+  |                                                |
+  |   [Dropbox] [Google Drive]      [Don't save]   |
+  +------------------------------------------------+
+
+*Maybe* show an extra button, [Cancel], if this is displayed as result
+of an attempted navigate-away?
+
+Maybe have a third option, to save to a custom HTTP-based file store?
+
+- Would have to consider authentication (maybe basic HTTP with
+  immediately-queried creds?).
+
+- Would have to have a url for the resource.
+
+- Read via simple GET (w/ creds if needed), write via simple PUT (w/
+  creds if needed).
+
+- Could replace URLs with shorter names, or perhaps remove the URLs
+  completely and just show a custom label (e.g. [Aardwolf-provided
+  storage]) if things can be configured ahead of time,
+  e.g. config_url=http://aardmud.org/wsmud/configs/$user/config.json.
+  In this case, it may just be a simple credential prompt when the
+  button is clicked.
+
+
+Dropbox-specific:
+
+- Quickest, for now, to make a "drop-in" app and use their "chooser"
+  and "saver" widgets.  Just need an API key; this can be easily done.
+
+- "saver" can take filename suggestions.
+
+- "chooser" seems to allow for preferred extensions, but not a
+  preferred file - but this is based on browsing the tutorial; maybe
+  there is an option I haven't seen yet.  Still, not a show-stopper.
+
+  - "direct" link can be specified via options; file can then be
+    downloaded directly via JS via a special 4-hour lifetime link
+    which also supports CORS.  Basically: this supports what we
+    need. :)
+
+Google Drive-specific: see the quickstart:
+https://developers.google.com/drive/web/quickstart/quickstart-js
