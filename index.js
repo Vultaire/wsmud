@@ -21,7 +21,7 @@ var debug;
     });
 
     var MenuBar = function () {
-        this.menuShown = false;
+        this.currentMenu = null;
     };
     MenuBar.prototype.initMenus = function () {
         var menuBar = this;
@@ -33,11 +33,29 @@ var debug;
         var menuBar = this;
         var parentSelector = sprintf('div.menu > span.%s', label);
         var bodySelector = sprintf('div.menu > ul.%s-menu', label);
+
+        // Grab the menubar label
         var menuElem = document.querySelector(parentSelector);
-        menuElem.addEventListener('click', function () {
-            if (!menuBar.menuShown) {
-                menuBar.menuShown = true;
-                var $menuPopup = jQuery(bodySelector);
+
+        // Create the jQuery UI menu object
+        var $menuPopup = jQuery(bodySelector);
+        $menuPopup.menu();
+        $menuPopup.css('position', 'absolute');
+        // Adjust top offset by 5 for bottom padding of menubar
+        $menuPopup.css(
+            'top',
+            (menuElem.offsetTop + menuElem.offsetHeight + 5) + 'px');
+        // adjust left offset by 5 for left padding of menubar
+        $menuPopup.css(
+            'left',
+            (menuElem.offsetLeft - 5) + 'px');
+
+        // Wire the menu to the menu bar
+        menuElem.$popup = $menuPopup;
+
+        menuElem.addEventListener('click', function (e) {
+            if (!menuBar.currentMenu) {
+                menuBar.currentMenu = e.target;
 
                 // TO DO: Maybe set a class or style on the menu
                 // element?  To ensure it stays "down", or to disable
@@ -46,17 +64,20 @@ var debug;
                 // normal?
 
                 // Show the menu
-                $menuPopup.menu();
-                $menuPopup.css('position', 'absolute');
-                // Adjust top offset by 5 for bottom padding of menubar
-                $menuPopup.css(
-                    'top',
-                    (menuElem.offsetTop + menuElem.offsetHeight + 5) + 'px');
-                // adjust left offset by 5 for left padding of menubar
-                $menuPopup.css(
-                    'left',
-                    (menuElem.offsetLeft - 5) + 'px');
                 $menuPopup.removeClass('hidden');
+            } else {
+                menuBar.currentMenu.$popup.addClass('hidden');
+                menuBar.currentMenu = null;
+            }
+        });
+        menuElem.addEventListener('mouseover', function (e) {
+            if (menuBar.currentMenu && menuBar.currentMenu !== e.target) {
+                // hide previous menu
+                menuBar.currentMenu.$popup.addClass('hidden');
+                menuBar.currentMenu = null;
+                // show new menu
+                menuBar.currentMenu = e.target;
+                menuBar.currentMenu.$popup.removeClass('hidden');
             }
         });
     };

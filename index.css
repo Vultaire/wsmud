@@ -6,6 +6,7 @@ div.menu {
     background-color: #CCCCCC;
     color: black;
     padding: 5px;
+    cursor: default;
 }
 .ui-menu .ui-menu-item {
     font-family: 'serif';
