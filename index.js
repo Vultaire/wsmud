@@ -26,15 +26,8 @@ var debug;
     MenuBar.prototype.init = function () {
         var menuBar = this;
         menuBar.initMenus();
-        document.querySelector('div.menu').addEventListener('click', function (e) {
-            // If the menu is clicked while open, it will close.
-            // Otherwise: no-op.
-            if (!e.defaultPrevented && menuBar.currentMenu) {
-                menuBar.closeMenu();  // unsets menuBar.currentMenu
-            }
-        });
         window.addEventListener('click', function (e) {
-            if (!e.defaultPrevented && menuBar.currentMenu && !e.menuEventHandled) {
+            if (!e.defaultPrevented && menuBar.currentMenu && !e.menuItemClicked) {
                 menuBar.closeMenu();
             }
         });
@@ -44,7 +37,18 @@ var debug;
         ['file', 'edit', 'help'].forEach(function (label) {
             menuBar.createMenu(label);
         });
-        // TO DO: Add event handlers to the individual menu items
+        var menuBarElem = document.querySelector('div.menu');
+        // If any menu popups are clicked anywhere, set a flag.
+        jQuery(menuBarElem).find('ul').toArray().forEach(function (liElem) {
+            liElem.addEventListener('click', function (e) {
+                e.menuItemClicked = true;
+            });
+        });
+        // Per-menu-item events
+        menuBarElem.querySelector('li.help-menu-about').addEventListener('click', function (e) {
+            menuBar.closeMenu();
+            alert('WSMud version 0.1\nBy Paul Goins');
+        });
     };
     MenuBar.prototype.createMenu = function (label) {
         var menuBar = this;
