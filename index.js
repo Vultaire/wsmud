@@ -20,18 +20,23 @@ var debug;
         onResize();
     });
 
-    var initMenus = function () {
-        initMenu('div.menu > span.file', '#file-menu');
-        initMenu('div.menu > span.help', '#help-menu');
+    var MenuBar = function () {
+        this.menuShown = false;
     };
-
-    var initMenu = function (parentSelector, bodySelector) {
-        // Basically need to do this for each menu.  Refactor later.
-        var menu = document.querySelector(parentSelector);
-        var menuShown = false;
-        menu.addEventListener('click', function () {
-            if (!menuShown) {
-                menuShown = true;
+    MenuBar.prototype.initMenus = function () {
+        var menuBar = this;
+        ['file', 'edit', 'help'].forEach(function (label) {
+            menuBar.initMenu(label);
+        });
+    };
+    MenuBar.prototype.initMenu = function (label) {
+        var menuBar = this;
+        var parentSelector = sprintf('div.menu > span.%s', label);
+        var bodySelector = sprintf('div.menu > ul.%s-menu', label);
+        var menuElem = document.querySelector(parentSelector);
+        menuElem.addEventListener('click', function () {
+            if (!menuBar.menuShown) {
+                menuBar.menuShown = true;
                 var $menuPopup = jQuery(bodySelector);
 
                 // TO DO: Maybe set a class or style on the menu
@@ -43,18 +48,23 @@ var debug;
                 // Show the menu
                 $menuPopup.menu();
                 $menuPopup.css('position', 'absolute');
-                $menuPopup.css('top', (menu.offsetTop + menu.offsetHeight) + 'px');
-                $menuPopup.css('left', menu.offsetLeft + 'px');
+                // Adjust top offset by 5 for bottom padding of menubar
+                $menuPopup.css(
+                    'top',
+                    (menuElem.offsetTop + menuElem.offsetHeight + 5) + 'px');
+                // adjust left offset by 5 for left padding of menubar
+                $menuPopup.css(
+                    'left',
+                    (menuElem.offsetLeft - 5) + 'px');
                 $menuPopup.removeClass('hidden');
             }
         });
-
-        // TO DO: Add help menu...
     };
 
     document.addEventListener('DOMContentLoaded', function () {
         onResize();
-        initMenus();
+        var menuBar = new MenuBar();
+        menuBar.initMenus();
 
         var client = Object.create(Client).initialize(
             document.querySelector('div.output'));

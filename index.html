@@ -8,19 +8,27 @@
   </head>
   <body>
     <!-- the client GUI -->
-    <ul id="file-menu" class="hidden">
-      <li>Connect...</li>
-      <li class="ui-state-disabled">Disconnect</li>
-      <li></li>
-      <li>Load configuration...</li>
-      <li>Save configuration...</li>
-    </ul>
-    <ul id="help-menu" class="hidden">
-      <li>About WSMud...</li>
-    </ul>
     <div class="menu">
       <span class="file">File</span>
+      <span class="edit">Edit</span>
       <span class="help">Help</span>
+      <ul class="file-menu hidden">
+        <li class="ui-state-disabled">Connect...</li>
+        <li class="ui-state-disabled">Disconnect</li>
+        <li></li>
+        <li class="ui-state-disabled">Load configuration...</li>
+        <li class="ui-state-disabled">Save configuration...</li>
+      </ul>
+      <ul class="edit-menu hidden">
+        <li class="ui-state-disabled">Aliases...</li>
+        <li class="ui-state-disabled">Macros...</li>
+        <li class="ui-state-disabled">Triggers...</li>
+        <li></li>
+        <li class="ui-state-disabled">Preferences...</li>
+      </ul>
+      <ul class="help-menu hidden">
+        <li>About WSMud...</li>
+      </ul>
     </div>
     <div class="output"></div>
     <div class="input">
