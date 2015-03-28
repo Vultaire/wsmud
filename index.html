@@ -4,12 +4,29 @@
     <title>WSMud</title>
     <link rel="stylesheet" href="index.css">
     <link rel="stylesheet" href="colors.css">
+    <link rel="stylesheet" href="bower_components/jquery-ui/themes/smoothness/jquery-ui.min.css">
   </head>
   <body>
+    <!-- the client GUI -->
+    <ul id="file-menu" class="hidden">
+      <li>Connect...</li>
+      <li class="ui-state-disabled">Disconnect</li>
+      <li></li>
+      <li>Load configuration...</li>
+      <li>Save configuration...</li>
+    </ul>
+    <ul id="help-menu" class="hidden">
+      <li>About WSMud...</li>
+    </ul>
+    <div class="menu">
+      <span class="file">File</span>
+      <span class="help">Help</span>
+    </div>
     <div class="output"></div>
     <div class="input">
       <input type="text" class="input" />
     </div>
+    <!-- end of client GUI -->
     <script src="sprintf.js"></script>
     <script src="lodash.min.js"></script>
     <script src="zlib/inflate.js"></script>
@@ -17,6 +34,8 @@
     <script src="mccp.js"></script>
     <script src="client.js"></script>
     <script src="input.js"></script>
+    <script src="bower_components/jquery/dist/jquery.min.js"></script>
+    <script src="bower_components/jquery-ui/jquery-ui.min.js"></script>
     <script src="index.js"></script>
   </body>
 </html>

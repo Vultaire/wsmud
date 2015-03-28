@@ -1,6 +1,21 @@
 body {
     margin: 0px;
-    background-color: black;
+    /*background-color: black;*/
+}
+div.menu {
+    background-color: #CCCCCC;
+    color: black;
+    padding: 5px;
+}
+.ui-menu {
+    width: 200px;
+}
+.ui-menu-item {
+    font-family: 'serif';
+    font-size: 1.0em;
+}
+div.menu span {
+    margin-right: 10px;
 }
 div.output {
     background-color: black;
@@ -23,4 +38,7 @@ div.output-line {
     font-family: monospace;
     white-space: pre-wrap;
     color: #c0c0c0;  /* ANSI "white", used as "default" coloring */
+}
+.hidden {
+    display: none;
 }

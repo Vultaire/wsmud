@@ -18,5 +18,8 @@
   ],
   "devDependencies": {
     "qunit": "~1.17.1"
+  },
+  "dependencies": {
+    "jquery-ui": "~1.11.4"
   }
 }
