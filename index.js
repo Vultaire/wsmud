@@ -20,6 +20,31 @@ var debug;
         onResize();
     });
 
+    var showMessageBox = function (templateSelector, args) {
+        var $template = jQuery(templateSelector);
+        var html = $template.text();
+        if (args) {
+            html = _.template(html)(args);
+        }
+        var $elem = jQuery(html);
+        jQuery('body').append($elem);
+        $elem.dialog({
+            resizeable: false,
+            modal: true,
+            buttons: [
+                {
+                    text: 'OK',
+                    click: function () {
+                        $elem.dialog('close');
+                    },
+                },
+            ],
+        });
+        $elem.on('dialogclose', function () {
+            $elem.remove();
+        });
+    };
+
     var MenuBar = function () {
         this.currentMenu = null;
     };
@@ -47,7 +72,7 @@ var debug;
         // Per-menu-item events
         menuBarElem.querySelector('li.help-menu-about').addEventListener('click', function (e) {
             menuBar.closeMenu();
-            alert('WSMud version 0.1\nBy Paul Goins');
+            showMessageBox('#help-about-template');
         });
     };
     MenuBar.prototype.createMenu = function (label) {
