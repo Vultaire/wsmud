@@ -87,10 +87,10 @@ var debug;
             menuBar.closeMenu();
             $menuItem.addClass('ui-state-disabled');
 
-            //var host = window.prompt('Enter host', 'aardwolf.com');
-            //var port = window.prompt('Enter port', '11333');
-            var host = window.prompt('Enter host', 'localhost');
-            var port = window.prompt('Enter port', '4000');
+            var host = window.prompt('Enter host', 'aardwolf.com');
+            var port = window.prompt('Enter port', '11333');
+            //var host = window.prompt('Enter host', 'localhost');
+            //var port = window.prompt('Enter port', '4000');
             var url = sprintf("ws://%s:%s/", host, port);
 
             var socket = menuBar.client.connect(url);
