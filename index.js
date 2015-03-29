@@ -45,8 +45,10 @@ var debug;
         });
     };
 
-    var MenuBar = function () {
+    var MenuBar = function (client) {
+        this.client = client;
         this.currentMenu = null;
+        this.init();
     };
     MenuBar.prototype.init = function () {
         var menuBar = this;
@@ -73,6 +75,27 @@ var debug;
         menuBarElem.querySelector('li.help-menu-about').addEventListener('click', function (e) {
             menuBar.closeMenu();
             showMessageBox('#help-about-template');
+        });
+
+        menuBarElem.querySelector('li.file-menu-connect').addEventListener('click', function (e) {
+            menuBar.closeMenu();
+
+            //var host = window.prompt('Enter host', 'aardwolf.com');
+            //var port = window.prompt('Enter port', '11333');
+            var host = window.prompt('Enter host', 'localhost');
+            var port = window.prompt('Enter port', '4000');
+            var url = sprintf("ws://%s:%s/", host, port);
+
+            var socket = menuBar.client.connect(url);
+            socket.addEventListener('open', function (e) {
+                console.log('Web socket opened successfully.');
+            });
+            socket.addEventListener('close', function (e) {
+                alert('The connection was closed.');
+            });
+            socket.addEventListener('error', function (e) {
+                alert('Could not open web socket!');
+            });
         });
     };
     MenuBar.prototype.createMenu = function (label) {
@@ -134,10 +157,10 @@ var debug;
 
     document.addEventListener('DOMContentLoaded', function () {
         onResize();
-        var menuBar = new MenuBar();
-        menuBar.init();
+        var client = Object.create(Client);
+        var menuBar = new MenuBar(client);
 
-        var client = Object.create(Client).initialize(
+        client.initialize(
             document.querySelector('div.output'));
         client.addRawFilter(Object.create(MCCPFilter).initialize());
 
@@ -145,24 +168,5 @@ var debug;
         var inputControl = Object.create(InputControl);
         inputControl.initialize(inputElem, client);
         inputControl.focus();
-
-        if (false) {
-            //var host = window.prompt('Enter host', 'aardwolf.com');
-            //var port = window.prompt('Enter port', '11333');
-            var host = window.prompt('Enter host', 'localhost');
-            var port = window.prompt('Enter port', '4000');
-            var url = sprintf("ws://%s:%s/", host, port);
-
-            var socket = client.connect(url);
-            socket.addEventListener('open', function (e) {
-                console.log('Web socket opened successfully.');
-            });
-            socket.addEventListener('close', function (e) {
-                alert('The connection was closed.');
-            });
-            socket.addEventListener('error', function (e) {
-                alert('Could not open web socket!');
-            });
-        }
     });
 })();
