@@ -77,8 +77,15 @@ var debug;
             showMessageBox('#help-about-template');
         });
 
-        menuBarElem.querySelector('li.file-menu-connect').addEventListener('click', function (e) {
+        var fileMenuConnect = menuBarElem.querySelector('li.file-menu-connect');
+        fileMenuConnect.addEventListener('click', function (e) {
+            var $menuItem = jQuery(fileMenuConnect);
+            if ($menuItem.hasClass('ui-state-disabled')) {
+                return;
+            }
+
             menuBar.closeMenu();
+            $menuItem.addClass('ui-state-disabled');
 
             //var host = window.prompt('Enter host', 'aardwolf.com');
             //var port = window.prompt('Enter port', '11333');
