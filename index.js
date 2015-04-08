@@ -31,6 +31,7 @@ var debug;
         $elem.dialog({
             resizeable: false,
             modal: true,
+            width: '800px',
             buttons: [
                 {
                     text: 'OK',

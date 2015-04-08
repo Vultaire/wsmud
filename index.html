@@ -31,8 +31,83 @@
       </ul>
       <script id="help-about-template" type="text/html">
         <div title="About WSMud">
-          WSMud version 0.1<br />
-          Copyright 2015 by Paul Goins
+          <p>
+            WSMud version 0.1<br />
+            Copyright 2015 by Paul Goins
+          </p>
+          <p>
+            <b>Intent:</b> To create a modern client for Multi-User
+            Dungeons (MUDs) and other similar online telnet-based
+            games.
+          </p>
+          <p>
+            <b>Current status:</b> For early adopters to experiment with.
+            <ul>
+              <li>
+                Works as a basic telnet client.
+              </li>
+              <li>
+                Has partial ANSI color support.  (Supports the full
+                subset used by Aardwolf.)
+              </li>
+              <li>
+                MCCP supported.  (Tested via binary WebSockets only.)
+              </li>
+            </ul>
+            Works as a telnet client with a subset of
+            ANSI color support (enough for Aardwolf).  Supports MCCP,
+            although only successfully tested via binary WebSocket
+            packets.  Save/load to/from cloud in near-term future.
+            Aliases/triggers/macros in near-to-mid-term future.
+          </p>
+          <p>
+            <b>Near-term goals:</b>
+            <ul>
+              <li>Save/load using cloud storage</li>
+              <li>Aliases and triggers, maybe macros</li>
+            </ul>
+          </p>
+          <p>
+            <b>Long-term goals:</b>
+            <ul>
+              <li>
+                Have your MUD client available from virtually
+                anywhere, with your settings and data available from
+                virtually anywhere.
+                <ul>
+                  <li>
+                    Cloud-based save/load via common "cloud drives"
+                    (e.g. Dropbox, Google Drive)
+                  </li>
+                  <li>
+                    Data dumping and loading via copy/paste (when feasible)
+                  </li>
+                </ul>
+              </li>
+              <li>
+                Extend your MUD client through plugins, downloadable
+                directly over the Internet.
+                <ul>
+                  <li>
+                    Plugin hooks intended to allow powerful
+                    customizations beyond what is commonly seen in
+                    popular MUD clients.
+                  </li>
+                  <li>
+                    Many current built-in features, possibly including
+                    core features such as triggers and aliases, to be
+                    eventually re-written as plugins.
+                  </li>
+                </ul>
+              </li>
+              <li>
+                Easily embed WSMud into your page as a Web Component,
+                providing a powerful alternative to Java and Flash
+                clients but without relying on 3rd-party runtime
+                engines.
+              </li>
+            </ul>
+          </p>
         </div>
       </script>
     </div>
